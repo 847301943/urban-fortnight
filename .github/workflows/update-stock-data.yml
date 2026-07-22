@@ -1,0 +1,65 @@
+name: 更新并发布大A智能选股网页
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+  schedule:
+    # 北京时间工作日 18:25；GitHub cron 使用 UTC
+    - cron: "25 10 * * 1-5"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: 取出仓库文件
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 获取并整理大A数据
+        env:
+          DETAIL_LIMIT: "160"
+          DETAIL_WORKERS: "5"
+          ANNUAL_YEARS: "4"
+          QUARTERS_TO_TRY: "6"
+        run: python scripts/update_data.py
+
+      - name: 准备网页文件
+        run: |
+          mkdir -p _site
+          cp index.html _site/index.html
+          cp .nojekyll _site/.nojekyll
+          cp -r data _site/data
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传网页
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: 发布网页
+        id: deployment
+        uses: actions/deploy-pages@v4
