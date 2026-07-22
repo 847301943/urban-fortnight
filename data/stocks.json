@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": "尚未首次更新",
+  "tradeDate": "-",
+  "source": "等待 GitHub Actions 首次生成",
+  "stockCount": 0,
+  "coverage": {
+    "roicExact": 0,
+    "fcfExact": 0,
+    "cashFlowExact": 0,
+    "estimated": 0,
+    "notApplicable": 0
+  },
+  "notes": [
+    "首次部署后，请在 GitHub Actions 手动运行“更新并发布大A智能选股网页”。",
+    "ROIC和自由现金流会逐股标注精确、部分精确、估算或不适用。"
+  ],
+  "stocks": []
+}

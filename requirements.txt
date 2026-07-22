@@ -1,0 +1,5 @@
+akshare>=1.18.40,<2
+pandas>=2.2,<3
+requests>=2.32,<3
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
