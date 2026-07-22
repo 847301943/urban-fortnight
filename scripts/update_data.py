@@ -82,9 +82,12 @@ def clip(value, low, high):
 
 
 def clean_code(value) -> str:
-    text = str(value or "").strip()
+    text = str(value or "").strip().lower()
     if text.endswith(".0"):
         text = text[:-2]
+    # 新浪实时行情返回 sh600000 / sz000001 / bj430017；东财返回纯数字。
+    if len(text) >= 8 and text[:2] in {"sh", "sz", "bj"} and text[2:].isdigit():
+        text = text[2:]
     return text.zfill(6) if text.isdigit() else text
 
 
@@ -411,9 +414,40 @@ def preliminary_detail_candidates(stocks: list[dict], limit: int) -> list[dict]:
     return [stock for _, stock in eligible[:limit]]
 
 
+def fetch_spot_snapshot() -> tuple[pd.DataFrame, str]:
+    """Fetch the A-share universe without depending on one quote provider.
+
+    GitHub-hosted runners are sometimes rejected by Eastmoney's push2 quote
+    service.  Try it only briefly, then switch to AKShare's Sina snapshot,
+    which also returns all Shanghai, Shenzhen and Beijing A shares in one call.
+    Missing valuation/trend fields are calculated later from financial reports
+    where possible, or left blank rather than fabricated.
+    """
+    try:
+        frame = call_with_retry(
+            "stock_zh_a_spot_em", ak.stock_zh_a_spot_em, attempts=2, base_wait=3.0
+        )
+        return frame, "东方财富实时行情"
+    except Exception as exc:
+        log(f"Eastmoney quote snapshot unavailable, switching to Sina: {exc}")
+
+    frame = call_with_retry(
+        "stock_zh_a_spot (Sina fallback)", ak.stock_zh_a_spot, attempts=4, base_wait=5.0
+    )
+    return frame, "新浪实时行情（东财不可用时自动切换）"
+
+
+def numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(frame[column], errors="coerce")
+
+
 def build() -> dict:
     now = datetime.now()
-    spot = call_with_retry("stock_zh_a_spot_em", ak.stock_zh_a_spot_em, attempts=8)
+    spot, spot_source = fetch_spot_snapshot()
+    if "代码" not in spot.columns:
+        raise RuntimeError(f"quote snapshot has no code column; columns={list(spot.columns)}")
     spot["代码"] = spot["代码"].map(clean_code)
     spot = spot[spot["代码"].map(is_a_share)].drop_duplicates("代码").copy()
     if len(spot) < MIN_STOCKS:
@@ -458,8 +492,9 @@ def build() -> dict:
 
     annual_report_maps = {date: dict_by_code(frame) for date, frame in a_reports.items()}
     annual_cash_maps = {date: dict_by_code(frame) for date, frame in a_cashflows.items()}
+    latest_annual_report = dict_by_code(merge_latest(a_reports))
 
-    ret60_values = pd.to_numeric(spot.get("60日涨跌幅"), errors="coerce").dropna()
+    ret60_values = numeric_series(spot, "60日涨跌幅").dropna()
     med60 = float(ret60_values.median()) if not ret60_values.empty else 0.0
     updated_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %z")
     trade_date = datetime.now().strftime("%Y-%m-%d")
@@ -468,10 +503,11 @@ def build() -> dict:
     for q in spot.to_dict(orient="records"):
         code = clean_code(q.get("代码"))
         report = report_map.get(code, {})
+        annual_report = latest_annual_report.get(code, {})
         balance = balance_map.get(code, {})
         cash = cash_map.get(code, {})
         income = income_map.get(code, {})
-        industry = str(report.get("所处行业") or "未分类")
+        industry = str(report.get("所处行业") or annual_report.get("所处行业") or "未分类")
 
         revenue = first_number(report, ["营业总收入-营业总收入", "营业总收入", "营业收入-营业收入"])
         profit = first_number(report, ["净利润-净利润", "净利润"])
@@ -486,6 +522,13 @@ def build() -> dict:
         turnover = numeric(q.get("换手率"))
         market_cap_yuan = numeric(q.get("总市值"))
         market_cap = market_cap_yuan / 1e8 if market_cap_yuan is not None else None
+        price = numeric(q.get("最新价"))
+        # 新浪快照没有 PE/PB。PB 可由最新每股净资产计算；PE 采用最近完整
+        # 年度每股收益计算静态 PE，并在数据说明中明确口径。
+        bvps = first_number(report, ["每股净资产"])
+        annual_eps = first_number(annual_report, ["每股收益"])
+        derived_pb = price / bvps if price is not None and bvps not in (None, 0) else None
+        derived_pe = price / annual_eps if price is not None and annual_eps not in (None, 0) else None
 
         volume_confirm = 2.5
         if pct is not None and pct > 0:
@@ -527,13 +570,13 @@ def build() -> dict:
             "code": code,
             "name": str(q.get("名称") or report.get("股票简称") or ""),
             "industry": industry,
-            "price": numeric(q.get("最新价")),
+            "price": price,
             "pctChange": pct,
             "marketCap": market_cap,
             "turnover": turnover,
             "reportDate": str(report_date or ""),
             "dataDate": updated_at,
-            "dataSource": "GitHub Actions / AKShare公开接口",
+            "dataSource": f"GitHub Actions / AKShare公开接口 / {spot_source}",
             "autoData": 1,
             "roe": numeric(report.get("净资产收益率")),
             "roic": roic,
@@ -558,8 +601,10 @@ def build() -> dict:
             "revenueGrowthQ": first_number(report, ["营业总收入-同比增长", "营业收入-同比增长"]),
             "profitGrowthQ": first_number(report, ["净利润-同比增长", "净利润同比"]),
             "epsRevision": None,
-            "pe": numeric(q.get("市盈率-动态")),
-            "pb": numeric(q.get("市净率")),
+            "pe": numeric(q.get("市盈率-动态")) if numeric(q.get("市盈率-动态")) is not None else derived_pe,
+            "peMethod": "动态PE" if numeric(q.get("市盈率-动态")) is not None else ("静态PE：股价/最近完整年度EPS" if derived_pe is not None else "暂无"),
+            "pb": numeric(q.get("市净率")) if numeric(q.get("市净率")) is not None else derived_pb,
+            "pbMethod": "行情PB" if numeric(q.get("市净率")) is not None else ("股价/最新每股净资产" if derived_pb is not None else "暂无"),
             "dividendYield": numeric(first_present(q, ["股息率", "股息率(TTM)"])),
             "aboveMA60": None if ret60 is None else int(ret60 > 0),
             "ma60Slope": None if ret60 is None else clip(ret60 / 6.0, -5.0, 5.0),
@@ -612,7 +657,7 @@ def build() -> dict:
         "schemaVersion": 2,
         "updatedAt": updated_at,
         "tradeDate": trade_date,
-        "source": "AKShare公开接口（GitHub后台定时整理，无需数据Token）",
+        "source": f"AKShare公开接口（{spot_source}；GitHub后台整理，无需数据Token）",
         "stockCount": len(stocks),
         "coverage": {
             "roe": sum(numeric(x.get("roe")) is not None for x in stocks),
@@ -621,6 +666,7 @@ def build() -> dict:
             "exactCashFlow": exact_count,
         },
         "notes": [
+            f"行情入口：{spot_source}。东财 push2 拒绝 GitHub 服务器时自动切换新浪；新浪缺失的估值字段从财报计算或留空，不伪造。",
             "ROIC为计算指标：全市场采用经营投入资本估算口径，优先候选在完整报表可用时采用权益+有息负债-现金口径。",
             "自由现金流：优先候选采用经营现金流减资本开支；其余非金融股采用经营现金流加投资现金流净额的保守代理，并在网页明确标注口径。",
             "银行、保险、券商等金融企业不套用工业企业ROIC和自由现金流公式。",
@@ -650,6 +696,14 @@ def main() -> int:
         log(f"UPDATE FAILED: {exc}")
         if OUTPUT.exists():
             log("existing stocks.json is preserved")
+            try:
+                cached = json.loads(OUTPUT.read_text(encoding="utf-8"))
+                cached_count = len(cached.get("stocks", []))
+                if cached_count >= MIN_STOCKS:
+                    log(f"valid cached dataset contains {cached_count} stocks; deploy cache instead")
+                    return 0
+            except Exception as cache_exc:
+                log(f"cached dataset validation failed: {cache_exc}")
         return 1
 
 
