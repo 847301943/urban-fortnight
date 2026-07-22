@@ -49,7 +49,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/index.html
-          cp .nojekyll _site/.nojekyll
+          touch _site/.nojekyll
           cp -r data _site/data
 
       - name: 配置 GitHub Pages
