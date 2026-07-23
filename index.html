@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>大A价值选股助手｜行业模型版</title>
-  <meta name="description" content="长期价值模型与短线技术信号完全分离：普通企业、金融行业专用模型、真实日K短线状态与回测审计。" />
+  <title>大A长期价值与隔日短线助手</title>
+  <meta name="description" content="长期价值模型与收盘后隔日短线计划完全分离：真实日K、次日开盘确认、A股T+1回测与数据审计。" />
   <style>
     :root{
       --bg:#f4f7fb; --panel:#ffffff; --ink:#162033; --muted:#667085;
@@ -124,9 +124,9 @@
 <body>
   <div class="shell">
     <section class="hero">
-      <h1>大A长期价值与短线信号助手</h1>
-      <p>长期判断看企业质量、现金流和估值；短线判断只看真实日K、市场环境、行业强弱、价格结构与量价。两套结论完全分开，任何“信号”都不是保证上涨或自动下单建议。</p>
-      <div class="hero-tags"><span class="hero-tag">长期与短线分离</span><span class="hero-tag">真实日K指标</span><span class="hero-tag">数据不足不下结论</span><span class="hero-tag">自动回测与缺失审计</span></div>
+      <h1>大A长期价值与隔日短线助手</h1>
+      <p>以隔日短线为主：每个交易日收盘后重新建立高流动性股票池，使用真实日K、收盘强度、市场与行业环境生成次日计划；长期模型只用于排雷和研究。隔日计划不等于自动买入。</p>
+      <div class="hero-tags"><span class="hero-tag">收盘后选股</span><span class="hero-tag">次日开盘确认</span><span class="hero-tag">A股T+1回测</span><span class="hero-tag">当日池全部刷新</span></div>
     </section>
 
     <div class="grid">
@@ -175,7 +175,7 @@
           </details>
         </div>
 
-        <div class="group compact-note"><b>长期视角：</b>用于判断公司是否值得研究和分批跟踪。<br><b>短线视角：</b>只对已补充真实日K的高流动性候选给信号；未覆盖公告、减持、解禁和盘中成交，不能单独作为下单依据。</div>
+        <div class="group compact-note"><b>隔日视角：</b>信号在收盘后生成，次日开盘只做条件确认；高开超过2.5%不追。由于A股T+1，次日买入后最早再下一交易日卖出。<br><b>长期视角：</b>只作为财务排雷和研究辅助。</div>
       </aside>
 
       <main class="main">
@@ -199,7 +199,7 @@
           </div>
           <div class="toolbar">
             <div class="toolbar-left">
-              <select id="viewMode"><option value="long">长期价值视角</option><option value="short">短线信号视角</option></select>
+              <select id="viewMode"><option value="short" selected>隔日短线视角</option><option value="long">长期价值视角</option></select>
               <input class="search" id="search" placeholder="搜索代码、名称或行业">
               <select id="buyFilter"><option value="all">全部买入判断</option><option value="buy">可分批关注</option><option value="wait">等待条件</option><option value="data">数据不足</option><option value="avoid">暂不考虑</option><option value="special">金融行业模型</option></select>
               <select id="industryFilter"><option value="all">全部行业</option></select>
@@ -223,7 +223,7 @@
             <div class="page-controls"><button class="btn ghost small" id="firstPage">首页</button><button class="btn ghost small" id="prevPage">上一页</button><span class="small" id="pageInfo">第 1 / 1 页</span><input id="pageJump" type="number" min="1" value="1" aria-label="跳转页码"><button class="btn ghost small" id="goPage">跳转</button><button class="btn ghost small" id="nextPage">下一页</button><button class="btn ghost small" id="lastPage">末页</button></div>
           </div>
         </section>
-        <div class="footer">说明：长期结论用于研究排序，不是交易指令；短线信号只对精确日K候选有效，回测含幸存者偏差且未覆盖公告、减持、解禁、停牌和真实滑点。任何交易都应核查最新公告并自行设置风险上限。</div>
+        <div class="footer">说明：隔日计划在收盘后生成，次日只做条件确认；A股T+1下买入当日不能卖出。回测含幸存者偏差，且未覆盖公告、减持、解禁、停牌和真实滑点。</div>
       </main>
     </div>
   </div>
@@ -244,7 +244,7 @@ const FIELDS = [
  ['aboveMA60','站上60日线(1/0)','number'],['ma60Slope','60日线斜率 %','number'],['aboveMA250','站上250日线(1/0)','number'],['relativeStrength','相对强弱（精确20日/代理60日）%','number'],['volumeConfirm','量价确认(0-5)','number'],
  ['moat','护城河(0-5)','number'],['management','管理层(0-5)','number'],['predictability','可预测性(0-5)','number'],['understandable','能力圈/易理解(0-5)','number'],['capitalAllocation','资本配置(0-5)','number'],
  ['receivableRisk','应收增速-营收增速 %','number'],['inventoryRisk','存货增速-营收增速 %','number'],['dilution','近3年股本稀释 %','number'],['ocfPositive','经营现金流为正(1/0)','number'],
- ['shortScore','短线信号分','number'],['shortCoverage','短线覆盖率 %','number'],['rsi14','RSI14','number'],['atrPct','ATR占股价 %','number'],['ret20','20日涨跌幅 %','number'],['amountAvg20','20日平均成交额 元','number']
+ ['shortScore','隔日计划分','number'],['shortCoverage','隔日覆盖率 %','number'],['rsi14','RSI14','number'],['atrPct','ATR占股价 %','number'],['ret3','3日涨跌幅 %','number'],['ret20','20日涨跌幅 %','number'],['dayPct','信号日涨跌幅 %','number'],['closeLocation','收盘位置 %','number'],['volumeTodayRatio20','当日量/20日均量','number'],['amountAvg20','20日平均成交额 元','number'],['entryReferenceLow','参考介入下沿','number'],['entryReferenceHigh','参考介入上沿','number'],['target15R','参考1.5R目标','number']
 ];
 
 const samples = [
@@ -255,8 +255,8 @@ const samples = [
  {code:'DEMO005',name:'周期材料E（演示）',industry:'基础化工',roe:9,roic:7,grossMargin:18,netMargin:5,debtRatio:63,ocfToProfit:.61,fcfYield:2.2,revenueCagr3:-4,profitCagr3:-12,revenueGrowthQ:-8,profitGrowthQ:-25,epsRevision:-12,pe:36,pb:1.9,dividendYield:1.1,aboveMA60:0,ma60Slope:-3.2,aboveMA250:0,relativeStrength:-19,volumeConfirm:1,moat:2,management:3,predictability:1,understandable:3,capitalAllocation:2,receivableRisk:14,inventoryRisk:18,dilution:6,ocfPositive:1}
 ];
 
-const PACK_KEYS=[...new Set([...FIELDS.map(x=>x[0]),'price','pctChange','marketCap','turnover','reportDate','dataDate','dataSource','autoData','raw60Return','ytdReturn','pcf','operatingCashFlow','freeCashFlow','roicMethod','fcfMethod','cashFlowDataLevel','ocfYears3','fcfYears3','detailError','financialMetricLevel','financialMetricMethod','dividendYieldMethod','amount','volume','volumeRatio','peMethod','pbMethod','trendDataLevel','shortDataLevel','shortDataCoverage','shortDecision','shortGroup','shortAction','shortSupports','shortBlocks','shortDimensions','shortRawScore','historyBars','historyStart','historyEnd','shortHistorySource','shortDataDate','marketShortScore','marketTrendLabel','industryShortScore','industryBreadth20','industryBreadth60','relativeStrength20','ma5','ma10','ma20','ma60','ma120','ma250','aboveMA20','ma20AboveMA60','ma20Slope','ret5','ret10','ret20','ret60','ret120','rsi14','macdDif','macdDea','macdHist','atr14','atrPct','volatility20','high20','high60','low20','distanceMA20','distanceHigh20','bollingerPctB','breakout20','breakout60','pullback20','amountAvg5','amountAvg20','volumeRatio5_20','amountRatio5_20','volumeTodayRatio20','amountTodayRatio20','turnoverAvg5','technicalStop','technicalRiskPct','target2R','eventRiskCoverage','eventRiskNote','shortHistoryError','receivableRiskMethod','inventoryRiskMethod','dilutionMethod'])];
-const CACHE_SCHEMA_VERSION='dual-model-v7-short-backtest';
+const PACK_KEYS=[...new Set([...FIELDS.map(x=>x[0]),'price','pctChange','marketCap','turnover','reportDate','dataDate','dataSource','autoData','raw60Return','ytdReturn','pcf','operatingCashFlow','freeCashFlow','roicMethod','fcfMethod','cashFlowDataLevel','ocfYears3','fcfYears3','detailError','financialMetricLevel','financialMetricMethod','dividendYieldMethod','amount','volume','volumeRatio','peMethod','pbMethod','trendDataLevel','shortDataLevel','shortDataCoverage','shortDecision','shortGroup','shortAction','shortSupports','shortBlocks','shortDimensions','shortRawScore','historyBars','historyStart','historyEnd','shortHistorySource','shortDataDate','marketShortScore','marketTrendLabel','industryShortScore','industryBreadth20','industryBreadth60','relativeStrength20','ma5','ma10','ma20','ma60','ma120','ma250','aboveMA20','ma20AboveMA60','ma20Slope','ret5','ret10','ret20','ret60','ret120','rsi14','macdDif','macdDea','macdHist','atr14','atrPct','volatility20','high20','high60','low20','distanceMA20','distanceHigh20','bollingerPctB','breakout20','breakout60','pullback20','amountAvg5','amountAvg20','volumeRatio5_20','amountRatio5_20','volumeTodayRatio20','amountTodayRatio20','turnoverAvg5','technicalStop','technicalRiskPct','target2R','target15R','signalDate','signalClose','entryReferenceLow','entryReferenceHigh','nextOpenMinGapPct','nextOpenMaxGapPct','closeLocation','upperShadowPct','lowerShadowPct','bodyPct','dayPct','gapOpenPct','ret3','aboveMA10','ma10AboveMA20','distanceMA10','shortPoolEligible','shortPoolSelected','shortPoolReason','overnightModel','eventRiskCoverage','eventRiskNote','shortHistoryError','receivableRiskMethod','inventoryRiskMethod','dilutionMethod'])];
+const CACHE_SCHEMA_VERSION='dual-model-v8-overnight';
 function packStocks(list){return {v:1,k:PACK_KEYS,d:list.map(s=>PACK_KEYS.map(k=>s[k]??null))};}
 function unpackStocks(p){if(!p||!Array.isArray(p.k)||!Array.isArray(p.d))return null;return p.d.map(row=>{const o={};p.k.forEach((k,i)=>{if(row[i]!==null&&row[i]!==undefined)o[k]=row[i];});return o;});}
 function safeLoad(){
@@ -265,7 +265,7 @@ function safeLoad(){
 }
 let stocks = safeLoad() || samples;
 let scored = [], sortKey='buyReadiness', sortDir=-1, editingIndex=null;
-let syncRunning=false, currentPage=1, pageSize=100, currentView='long', backtestReport=null, auditReport=null;
+let syncRunning=false, currentPage=1, pageSize=100, currentView='short', backtestReport=null, auditReport=null;
 const AUTO_SOURCE='GitHub自动数据（AKShare）';
 const API_PAGE_SIZE=100;
 const API_CONCURRENCY=1;
@@ -645,10 +645,10 @@ function renderFilters(){
  const current=$('industryFilter').value; const inds=[...new Set(stocks.map(s=>s.industry).filter(Boolean))].sort(); $('industryFilter').innerHTML='<option value="all">全部行业</option>'+inds.map(x=>`<option>${esc(x)}</option>`).join(''); if(inds.includes(current))$('industryFilter').value=current;
 }
 function updateViewUI(resetFilter=false){
- currentView=$('viewMode').value||'long';
+ currentView=$('viewMode').value||'short';
  const f=$('buyFilter'),old=resetFilter?'all':f.value;
  if(currentView==='short'){
-  f.innerHTML='<option value="all">全部短线状态</option><option value="signal">突破/回踩/趋势信号</option><option value="wait">等待信号</option><option value="avoid">过热/弱势/低流动性</option><option value="data">短线数据未覆盖</option>';
+  f.innerHTML='<option value="all">全部已刷新隔日池</option><option value="signal">隔日备选</option><option value="wait">等待隔日触发</option><option value="avoid">过热/弱势/低流动性</option><option value="data">日K失败或容量外</option><option value="outside">未进入隔日池</option>';
   sortKey='shortScore';sortDir=-1;
  }else{
   f.innerHTML='<option value="all">全部长期结论</option><option value="buy">长期可研究</option><option value="wait">等待条件</option><option value="data">数据不足</option><option value="avoid">暂不考虑</option><option value="special">金融基础观察</option>';
@@ -660,8 +660,11 @@ function updateViewUI(resetFilter=false){
 function filtered(){
  const q=$('search').value.trim().toLowerCase(), bf=$('buyFilter').value, ind=$('industryFilter').value;
  const match=s=>{
+  if(currentView==='short'){
+   if(bf==='all')return hasNum(s.shortScore);
+   return (bf==='signal'&&s.shortGroup==='signal')||(bf==='wait'&&s.shortGroup==='wait')||(bf==='avoid'&&s.shortGroup==='avoid')||(bf==='data'&&(s.shortDataLevel==='日K获取失败'||s.shortDataLevel==='隔日池容量外'))||(bf==='outside'&&s.shortDataLevel==='未进入隔日池');
+  }
   if(bf==='all')return true;
-  if(currentView==='short')return (bf==='signal'&&s.shortGroup==='signal')||(bf==='wait'&&s.shortGroup==='wait')||(bf==='avoid'&&s.shortGroup==='avoid')||(bf==='data'&&(!hasNum(s.shortScore)||s.shortGroup==='data'));
   return (bf==='buy'&&s.buyGroup==='buy')||(bf==='wait'&&s.buyGroup==='wait')||(bf==='data'&&s.buyGroup==='data')||(bf==='avoid'&&s.buyGroup==='avoid')||(bf==='special'&&s.buyGroup==='special');
  };
  let a=scored.filter(s=>(!q||[s.code,s.name,s.industry].join(' ').toLowerCase().includes(q))&&match(s)&&(ind==='all'||s.industry===ind));
@@ -669,7 +672,7 @@ function filtered(){
 }
 function renderHead(){
  $('tableHeadRow').innerHTML=currentView==='short'?
-  '<th>排名</th><th data-sort="name">股票</th><th data-sort="industry">行业</th><th data-sort="shortScore">短线状态</th><th data-sort="marketShortScore">市场</th><th data-sort="industryShortScore">行业</th><th>结构</th><th>量价</th><th>动量</th><th>风险</th><th>关键原因</th><th>详情</th>':
+  '<th>排名</th><th data-sort="name">股票</th><th data-sort="industry">行业</th><th data-sort="shortScore">隔日计划</th><th data-sort="marketShortScore">市场</th><th data-sort="industryShortScore">行业</th><th>结构</th><th>量价</th><th>动量</th><th>风险</th><th>关键原因</th><th>详情</th>':
   '<th>排名</th><th data-sort="name">股票</th><th data-sort="industry">行业</th><th data-sort="buyReadiness">长期研究结论</th><th data-sort="score">可信分</th><th data-sort="quality">质量</th><th data-sort="growth">成长</th><th data-sort="value">估值</th><th data-sort="trend">趋势</th><th>关键原因</th><th>详情</th>';
 }
 function render(){
@@ -677,15 +680,15 @@ function render(){
  const all=filtered(),totalPages=Math.max(1,Math.ceil(all.length/pageSize)); currentPage=Math.max(1,Math.min(currentPage,totalPages));
  const start=(currentPage-1)*pageSize,end=Math.min(start+pageSize,all.length),data=all.slice(start,end);
  $('tbody').innerHTML=data.map((s,i)=>currentView==='short'?rowShort(s,start+i+1):rowLong(s,start+i+1)).join(''); $('empty').style.display=all.length?'none':'block';
- $('visibleInfo').innerHTML=all.length?`共 ${all.length} 只，当前显示第 ${start+1}–${end} 名；${currentView==='short'?'仅精确日K候选可形成短线信号，事件风险仍需人工核查。':'长期结论按研究成熟度排序，不等于立即买入。'}`:'当前没有符合条件的股票。';
+ $('visibleInfo').innerHTML=all.length?`共 ${all.length} 只，当前显示第 ${start+1}–${end} 名；${currentView==='short'?'只显示本日已刷新日K的隔日池；信号日收盘后生成，次日高开超过2.5%不追，公告风险需人工核查。':'长期结论按研究成熟度排序，不等于立即买入。'}`:'当前没有符合条件的股票。';
  $('pageInfo').textContent=`第 ${currentPage} / ${totalPages} 页 · 共 ${all.length} 只`; $('pageJump').max=totalPages; $('pageJump').value=currentPage;
  ['firstPage','prevPage'].forEach(id=>$(id).disabled=currentPage<=1); ['nextPage','lastPage'].forEach(id=>$(id).disabled=currentPage>=totalPages);
- $('statCount').textContent=scored.length;
+ $('statCount').textContent=currentView==='short'?scored.filter(x=>x.shortPoolSelected).length:scored.length;
  if(currentView==='short'){
-  $('statCountLabel').textContent='股票总数';$('statCountSub').textContent='全市场基础数据';
-  $('statBuyLabel').textContent='短线观察信号';$('statBuySub').textContent='突破、回踩或趋势跟踪';$('statBuy').textContent=scored.filter(x=>x.shortGroup==='signal').length;
-  $('statWaitLabel').textContent='等待信号';$('statWaitSub').textContent='结构或量能尚未确认';$('statWait').textContent=scored.filter(x=>x.shortGroup==='wait').length;
-  $('statAvoidLabel').textContent='规避/未覆盖';$('statAvoidSub').textContent='过热、弱势、低流动性或无日K';$('statAvoid').textContent=scored.filter(x=>x.shortGroup==='avoid'||!hasNum(x.shortScore)||x.shortGroup==='data').length;
+  $('statCountLabel').textContent='当日隔日池';$('statCountSub').textContent='本次运行全部刷新';
+  $('statBuyLabel').textContent='隔日备选';$('statBuySub').textContent='突破、回踩或收盘强势';$('statBuy').textContent=scored.filter(x=>x.shortGroup==='signal').length;
+  $('statWaitLabel').textContent='等待触发';$('statWaitSub').textContent='结构或量能尚未确认';$('statWait').textContent=scored.filter(x=>x.shortGroup==='wait').length;
+  $('statAvoidLabel').textContent='本日不可用';$('statAvoidSub').textContent='过热、弱势或日K失败';$('statAvoid').textContent=scored.filter(x=>x.shortGroup==='avoid'||x.shortDataLevel==='日K获取失败').length;
  }else{
   $('statCountLabel').textContent='股票总数';$('statCountSub').textContent='当前数据集';
   $('statBuyLabel').textContent='长期可研究';$('statBuySub').textContent='质量、估值与可信度达标';$('statBuy').textContent=scored.filter(x=>x.buyGroup==='buy').length;
@@ -699,9 +702,9 @@ function rowLong(s,rank){
  return `<tr><td class="rank">${rank}</td><td><div class="name">${esc(s.name)}${s.autoData?'<span class="auto-badge">自动</span>':''}</div><div class="code">${esc(s.code)} · ${esc(quoteText(s))}</div></td><td>${esc(s.industry||'-')}<div><span class="model-badge ${financialModelClass(s.financialModel||financialModelOf(s))}">${esc(s.financialModelLabel||financialModelLabel(financialModelOf(s)))}</span></div></td><td><span class="decision-pill ${s.decisionClass}">${esc(s.buyDecision)}</span><div class="readiness">长期成熟度 <b>${s.buyReadiness}</b>/100</div></td><td><span class="score ${cls}">${s.score.toFixed(1)}</span><div class="small muted">核心覆盖${s.coreCoverage}%</div></td>${['quality','growth','value','trend'].map(k=>`<td><div>${Math.round(s[k])}</div><div class="bar"><i style="width:${s[k]}%"></i></div></td>`).join('')}<td class="reason" title="${esc(reason)}">${esc(reason)}</td><td><button class="btn ghost small" onclick="openDetail(${s._index})">查看双模型</button></td></tr>`;
 }
 function rowShort(s,rank){
- const dims=s.shortDimensions||{},decision=s.shortDecision||'短线数据未覆盖',group=s.shortGroup||'data',reason=(s.shortBlocks&&s.shortBlocks[0])||(s.shortSupports&&s.shortSupports[0])||s.shortAction||'未进入精确日K候选池';
+ const dims=s.shortDimensions||{},decision=s.shortDecision||'未进入隔日池',group=s.shortGroup||'data',reason=(s.shortBlocks&&s.shortBlocks[0])||(s.shortSupports&&s.shortSupports[0])||s.shortAction||s.shortPoolReason||'未进入隔日池';
  const dim=k=>hasNum(dims[k])?Math.round(num(dims[k])):'-';
- return `<tr><td class="rank">${rank}</td><td><div class="name">${esc(s.name)}${s.shortDataLevel==='精确日K'?'<span class="auto-badge">日K</span>':''}</div><div class="code">${esc(s.code)} · ${esc(quoteText(s))}</div></td><td>${esc(s.industry||'-')}<div class="small muted">${esc(s.shortDataLevel||'未补充日K')}</div></td><td><span class="signal-pill ${esc(group)}">${esc(decision)}</span><div class="readiness">信号分 <b>${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'-'}</b>/100 · 覆盖${num(s.shortCoverage||s.shortDataCoverage)}%</div></td><td>${hasNum(s.marketShortScore)?num(s.marketShortScore).toFixed(0):'-'}<div class="small muted">${esc(s.marketTrendLabel||'')}</div></td><td>${hasNum(s.industryShortScore)?num(s.industryShortScore).toFixed(0):'-'}<div class="small muted">20日广度${hasNum(s.industryBreadth20)?num(s.industryBreadth20).toFixed(0)+'%':'-'}</div></td><td>${dim('price')}</td><td>${dim('volume')}</td><td>${dim('momentum')}</td><td>${dim('risk')}</td><td class="reason" title="${esc(reason)}">${esc(reason)}</td><td><button class="btn ghost small" onclick="openDetail(${s._index})">查看双模型</button></td></tr>`;
+ return `<tr><td class="rank">${rank}</td><td><div class="name">${esc(s.name)}${s.shortDataLevel==='精确日K'?'<span class="auto-badge">日K</span>':''}</div><div class="code">${esc(s.code)} · ${esc(quoteText(s))}</div></td><td>${esc(s.industry||'-')}<div class="small muted">${esc(s.shortDataLevel||'未补充日K')}</div></td><td><span class="signal-pill ${esc(group)}">${esc(decision)}</span><div class="readiness">隔日计划分 <b>${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'-'}</b>/100 · 覆盖${num(s.shortCoverage||s.shortDataCoverage)}%</div></td><td>${hasNum(s.marketShortScore)?num(s.marketShortScore).toFixed(0):'-'}<div class="small muted">${esc(s.marketTrendLabel||'')}</div></td><td>${hasNum(s.industryShortScore)?num(s.industryShortScore).toFixed(0):'-'}<div class="small muted">20日广度${hasNum(s.industryBreadth20)?num(s.industryBreadth20).toFixed(0)+'%':'-'}</div></td><td>${dim('price')}</td><td>${dim('volume')}</td><td>${dim('momentum')}</td><td>${dim('risk')}</td><td class="reason" title="${esc(reason)}">${esc(reason)}</td><td><button class="btn ghost small" onclick="openDetail(${s._index})">查看双模型</button></td></tr>`;
 }
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function inlineEdit(e){/* 保留扩展接口 */}
@@ -709,7 +712,7 @@ function inlineEdit(e){/* 保留扩展接口 */}
 function openDetail(idx){
  const s=compute(stocks[idx]);
  $('detailTitle').textContent=s.name;
- $('detailSub').textContent=`${s.code} · ${s.industry||'未分类'} · 长期可信分 ${s.score.toFixed(1)} · 短线信号分 ${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'未覆盖'} · ${s.autoData?'自动数据':''}`;
+ $('detailSub').textContent=`${s.code} · ${s.industry||'未分类'} · 隔日计划分 ${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'未形成'} · 信号日 ${s.signalDate||s.shortDataDate||'-'} · 长期可信分 ${s.score.toFixed(1)}`;
  const format=(v,u='')=>hasNum(v)?num(v).toFixed(1)+u:'暂无';
  const reasons=(s.buyReason&&s.buyReason.length?s.buyReason:['暂未形成明确支持项']),blocks=(s.buyBlocks&&s.buyBlocks.length?s.buyBlocks:['暂无明显阻碍，但仍需核查年报']);
  const fm=s.financialModel||financialModelOf(s),isFin=fm!=='general';
@@ -720,12 +723,12 @@ function openDetail(idx){
  $('detailBody').innerHTML=`
   <div class="dual-cards">
    <div class="buy-card ${s.decisionClass}"><div class="buy-head"><h3>长期研究：${esc(s.buyDecision)}</h3><div class="buy-score">成熟度 ${s.buyReadiness}/100</div></div><div class="buy-action">${esc(s.buyAction)}</div><div class="buy-reasons"><div class="mini-card"><b>支持条件</b><br>${reasons.map(x=>'✓ '+esc(x)).join('<br>')}</div><div class="mini-card"><b>主要阻碍</b><br>${blocks.map(x=>'• '+esc(x)).join('<br>')}</div></div></div>
-   <div class="buy-card"><div class="buy-head"><h3>短线状态：<span class="signal-pill ${esc(signalGroup)}">${esc(s.shortDecision||'短线数据未覆盖')}</span></h3><div class="buy-score">信号分 ${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'-'}/100</div></div><div class="buy-action">${esc(s.shortAction||'未进入精确日K候选池，不能据此做短线判断。')}</div><div class="buy-reasons"><div class="mini-card"><b>技术支持</b><br>${shortSupports.map(x=>'✓ '+esc(x)).join('<br>')}</div><div class="mini-card"><b>风险与失效条件</b><br>${shortBlocks.map(x=>'• '+esc(x)).join('<br>')}</div></div><div class="view-warning">${esc(s.eventRiskNote||'尚未自动覆盖公告、减持、解禁、停复牌和财报披露窗口。')} 下单前必须人工核查。</div></div>
+   <div class="buy-card"><div class="buy-head"><h3>隔日计划：<span class="signal-pill ${esc(signalGroup)}">${esc(s.shortDecision||'未进入隔日池')}</span></h3><div class="buy-score">计划分 ${hasNum(s.shortScore)?num(s.shortScore).toFixed(1):'-'}/100</div></div><div class="buy-action">${esc(s.shortAction||s.shortPoolReason||'本日不形成隔日计划。')}</div><div class="buy-reasons"><div class="mini-card"><b>技术支持</b><br>${shortSupports.map(x=>'✓ '+esc(x)).join('<br>')}</div><div class="mini-card"><b>风险与失效条件</b><br>${shortBlocks.map(x=>'• '+esc(x)).join('<br>')}</div></div><div class="view-warning">${esc(s.eventRiskNote||'尚未自动覆盖公告、减持、解禁、停复牌和财报披露窗口。')} 下单前必须人工核查。</div></div>
   </div>
   ${isFin?`<div class="model-note"><b>${esc(s.financialModelLabel||financialModelLabel(fm))}</b>：金融机构不使用普通企业ROIC、自由现金流和负债率模型。当前专项指标覆盖 ${s.specialCoverage??0}%。</div>`:''}
   <div class="detail-grid"><div>
    <div class="card-lite"><h3 style="margin-top:0">长期四项判断</h3>${[['企业质量',s.quality,s.dimensionCoverage.quality],['成长趋势',s.growth,s.dimensionCoverage.growth],['估值安全边际',s.value,s.dimensionCoverage.value],['中期趋势',s.trend,s.dimensionCoverage.trend]].map(d=>`<div class="dimension"><span>${d[0]}<span class="small muted">（覆盖${d[2]}%）</span></span><div class="bar"><i style="width:${d[1]}%"></i></div><b>${Math.round(d[1])}</b></div>`).join('')}</div>
-   <div class="card-lite" style="margin-top:16px"><h3 style="margin-top:0">短线五维</h3><div class="short-dims">${[['市场',shortDims.environment],['结构',shortDims.price],['量价',shortDims.volume],['动量',shortDims.momentum],['风险',shortDims.risk]].map(x=>`<div class="short-dim"><span>${x[0]}</span><b>${hasNum(x[1])?Math.round(num(x[1])):'-'}</b></div>`).join('')}</div>${metric('MA20',s.ma20,'元')}${metric('MA60',s.ma60,'元')}${metric('RSI14',s.rsi14,'')}${metric('ATR占股价',s.atrPct,'%')}${metric('20日涨跌幅',s.ret20,'%')}${moneyMetric('20日平均成交额',s.amountAvg20)}${metric('技术保护位',s.technicalStop,'元')}${metric('参考2R目标',s.target2R,'元')}${textMetric('日K来源',s.shortHistorySource)}${textMetric('日K区间',s.historyStart&&s.historyEnd?`${s.historyStart} 至 ${s.historyEnd}`:'未覆盖')}</div>
+   <div class="card-lite" style="margin-top:16px"><h3 style="margin-top:0">隔日五维与次日条件</h3><div class="short-dims">${[['市场',shortDims.environment],['结构',shortDims.price],['量价',shortDims.volume],['动量',shortDims.momentum],['风险',shortDims.risk]].map(x=>`<div class="short-dim"><span>${x[0]}</span><b>${hasNum(x[1])?Math.round(num(x[1])):'-'}</b></div>`).join('')}</div>${metric('信号日涨跌幅',s.dayPct,'%')}${metric('3日涨跌幅',s.ret3,'%')}${metric('收盘位置',s.closeLocation,'%')}${metric('当日量/20日均量',s.volumeTodayRatio20,'倍')}${metric('MA20',s.ma20,'元')}${metric('MA60',s.ma60,'元')}${metric('RSI14',s.rsi14,'')}${metric('ATR占股价',s.atrPct,'%')}${moneyMetric('20日平均成交额',s.amountAvg20)}${metric('参考介入下沿',s.entryReferenceLow,'元')}${metric('参考介入上沿',s.entryReferenceHigh,'元')}${metric('技术保护位',s.technicalStop,'元')}${metric('参考1.5R目标',s.target15R,'元')}${textMetric('次日开盘规则','相对信号收盘价 -4% 至 +2.5%；高开超过2.5%不追')}${textMetric('A股T+1','次日买入后最早再下一交易日卖出')}${textMetric('日K来源',s.shortHistorySource)}${textMetric('日K区间',s.historyStart&&s.historyEnd?`${s.historyStart} 至 ${s.historyEnd}`:'未覆盖')}</div>
   </div><div>
    <div class="card-lite"><h3 style="margin-top:0">长期关键指标</h3><div class="key-grid">${keyRows.map(x=>`<div class="key-item"><span>${x[0]}</span><b>${esc(x[1])}</b></div>`).join('')}</div></div>
    ${isFin?`<details class="advanced" style="margin-top:16px"><summary>查看金融指标口径</summary><div class="advanced-body">${textMetric('行业模型',s.financialModelLabel||financialModelLabel(fm))}${textMetric('专项指标级别',s.financialMetricLevel||'基础')}${textMetric('PE口径',s.peMethod)}${textMetric('PB口径',s.pbMethod)}${textMetric('股息率口径',s.dividendYieldMethod)}${textMetric('数据说明',s.financialMetricMethod)}</div></details>`:`<details class="advanced" style="margin-top:16px"><summary>查看估值与现金流口径</summary><div class="advanced-body">${textMetric('PE口径',s.peMethod)}${textMetric('PB口径',s.pbMethod)}${textMetric('ROIC口径',s.roicMethod)}${textMetric('自由现金流口径',s.fcfMethod)}${arrayMetric('近3年经营现金流',s.ocfYears3)}${arrayMetric('近3年自由现金流',s.fcfYears3)}</div></details>`}
@@ -767,8 +770,8 @@ function downloadCSV(filename,rows){
 }
 $('downloadTemplate').onclick=()=>{const row={};FIELDS.forEach(([k,l])=>row[l]='');downloadCSV('智能选股导入模板.csv',[row]);};
 $('exportBtn').onclick=()=>{
- const rows=filtered().map((s,i)=>({排名:i+1,股票代码:s.code,股票名称:s.name,行业:s.industry,采用长期模型:s.financialModelLabel||financialModelLabel(financialModelOf(s)),现价:s.price,长期研究结论:s.buyDecision,长期成熟度:s.buyReadiness,长期可信分:s.score.toFixed(1),企业质量:Math.round(s.quality),成长趋势:Math.round(s.growth),估值安全边际:Math.round(s.value),短线状态:s.shortDecision||'未覆盖',短线信号分:s.shortScore,短线数据覆盖率:s.shortCoverage||s.shortDataCoverage,市场环境分:s.marketShortScore,行业环境分:s.industryShortScore,RSI14:s.rsi14,ATR百分比:s.atrPct,MA20:s.ma20,MA60:s.ma60,'20日涨跌幅':s.ret20,'20日平均成交额':s.amountAvg20,技术保护位:s.technicalStop,事件风险:s.eventRiskNote||'未覆盖',ROE:s.roe,ROIC:s.roic,PE:s.pe,PE口径:s.peMethod,PB:s.pb,股息率:s.dividendYield,主要长期阻碍:(s.buyBlocks||[]).join('；'),短线阻碍:(s.shortBlocks||[]).join('；'),数据来源:s.dataSource||'',数据时间:s.dataDate||''}));
- if(!rows.length){alert('当前没有可导出的结果');return;} downloadCSV(currentView==='short'?'智能选股_短线信号.csv':'智能选股_长期研究结论.csv',rows);
+ const rows=filtered().map((s,i)=>({排名:i+1,股票代码:s.code,股票名称:s.name,行业:s.industry,采用长期模型:s.financialModelLabel||financialModelLabel(financialModelOf(s)),现价:s.price,长期研究结论:s.buyDecision,长期成熟度:s.buyReadiness,长期可信分:s.score.toFixed(1),企业质量:Math.round(s.quality),成长趋势:Math.round(s.growth),估值安全边际:Math.round(s.value),隔日计划:s.shortDecision||'未形成',隔日计划分:s.shortScore,隔日数据覆盖率:s.shortCoverage||s.shortDataCoverage,市场环境分:s.marketShortScore,行业环境分:s.industryShortScore,RSI14:s.rsi14,ATR百分比:s.atrPct,MA20:s.ma20,MA60:s.ma60,'20日涨跌幅':s.ret20,'20日平均成交额':s.amountAvg20,信号日:s.signalDate,收盘位置:s.closeLocation,当日量比20日均量:s.volumeTodayRatio20,参考介入下沿:s.entryReferenceLow,参考介入上沿:s.entryReferenceHigh,技术保护位:s.technicalStop,参考1点5R目标:s.target15R,事件风险:s.eventRiskNote||'未覆盖',ROE:s.roe,ROIC:s.roic,PE:s.pe,PE口径:s.peMethod,PB:s.pb,股息率:s.dividendYield,主要长期阻碍:(s.buyBlocks||[]).join('；'),隔日阻碍:(s.shortBlocks||[]).join('；'),数据来源:s.dataSource||'',数据时间:s.dataDate||''}));
+ if(!rows.length){alert('当前没有可导出的结果');return;} downloadCSV(currentView==='short'?'智能选股_隔日短线计划.csv':'智能选股_长期研究结论.csv',rows);
 };
 
 
@@ -889,7 +892,7 @@ async function loadHostedStocks(manual=true){
   const cached=rescore();
   setSyncProgress(100);
   const validRoe=stocks.filter(x=>hasNum(x.roe)).length,validPe=stocks.filter(x=>hasNum(x.pe)&&x.pe>0).length,validRoic=stocks.filter(x=>hasNum(x.roic)).length,validFcf=stocks.filter(x=>hasNum(x.fcfYield)).length,validDividend=stocks.filter(x=>hasNum(x.dividendYield)).length,exactCash=stocks.filter(x=>x.cashFlowDataLevel==='精确').length,validShort=stocks.filter(x=>hasNum(x.shortScore)).length;
-  setSyncStatus('ok','大A数据读取完成',`${stocks.length}只 · 交易日 ${payload.tradeDate||'-'}`,`后台更新时间：${payload.updatedAt||'-'}；ROE ${validRoe}只，ROIC ${validRoic}只，股息率 ${validDividend}只，FCF收益率 ${validFcf}只，其中精确现金流 ${exactCash}只；精确日K短线候选 ${validShort}只。${cached?'已保存浏览器缓存。':'浏览器缓存空间不足，但本次筛选不受影响。'}`);
+  setSyncStatus('ok','大A数据读取完成',`${stocks.length}只 · 交易日 ${payload.tradeDate||'-'}`,`后台更新时间：${payload.updatedAt||'-'}；ROE ${validRoe}只，ROIC ${validRoic}只，股息率 ${validDividend}只，FCF收益率 ${validFcf}只，其中精确现金流 ${exactCash}只；已刷新隔日池 ${validShort}只。${cached?'已保存浏览器缓存。':'浏览器缓存空间不足，但本次筛选不受影响。'}`);
  }catch(err){
   console.error(err);
   const autoCount=stocks.filter(x=>x.autoData).length;
@@ -933,7 +936,7 @@ async function loadAnalysisReports(){
   if(b.ok)backtestReport=await b.json(); if(a.ok)auditReport=await a.json();
   const o=backtestReport&&backtestReport.overall||{},sample=backtestReport&&backtestReport.sample||{},validation=backtestReport&&backtestReport.validation&&backtestReport.validation.laterValidation||{},issues=auditReport&&auditReport.issues||[];
   $('analysisMeta').textContent=backtestReport?`回测 ${sample.testedStocks||0}只 · ${o.trades||0}笔交易 · ${sample.periodStart||'-'} 至 ${sample.periodEnd||'-'}`:'尚未生成真实日K回测报告';
-  $('analysisBody').innerHTML=`<div class="analysis-grid"><div class="analysis-metric"><span>交易数</span><b>${o.trades||0}</b></div><div class="analysis-metric"><span>胜率</span><b>${fmtReport(o.winRate,1,'%')}</b></div><div class="analysis-metric"><span>单笔平均</span><b>${fmtReport(o.averageReturnPct,2,'%')}</b></div><div class="analysis-metric"><span>盈亏因子</span><b>${fmtReport(o.profitFactor,2,'')}</b></div><div class="analysis-metric"><span>后30%验证平均</span><b>${fmtReport(validation.averageReturnPct,2,'%')}</b></div></div><div class="view-warning" style="margin-top:12px">这是当前存量候选的工程回测，存在幸存者和样本选择偏差，未模拟停牌、涨跌停无法成交、真实滑点及公告风险，不可理解为未来收益预测。</div>${issues.slice(0,5).map(x=>`<div class="audit-issue"><b>${esc(x.level)} · ${esc(x.title)}</b><br>${esc(x.detail)}<br><span class="muted">改进：${esc(x.action)}</span></div>`).join('')}`;
+  $('analysisBody').innerHTML=`<div class="analysis-grid"><div class="analysis-metric"><span>交易数</span><b>${o.trades||0}</b></div><div class="analysis-metric"><span>胜率</span><b>${fmtReport(o.winRate,1,'%')}</b></div><div class="analysis-metric"><span>单笔平均</span><b>${fmtReport(o.averageReturnPct,2,'%')}</b></div><div class="analysis-metric"><span>盈亏因子</span><b>${fmtReport(o.profitFactor,2,'')}</b></div><div class="analysis-metric"><span>后30%验证平均</span><b>${fmtReport(validation.averageReturnPct,2,'%')}</b></div></div><div class="view-warning" style="margin-top:12px">回测口径：信号日收盘后生成计划，下一交易日开盘介入；受A股T+1约束，最早再下一交易日退出。它没有假设能在信号日收盘价成交，也未覆盖公告、停牌和真实滑点。</div>${issues.slice(0,5).map(x=>`<div class="audit-issue"><b>${esc(x.level)} · ${esc(x.title)}</b><br>${esc(x.detail)}<br><span class="muted">改进：${esc(x.action)}</span></div>`).join('')}`;
  }catch(e){$('analysisMeta').textContent='回测/审计报告暂未生成';$('analysisBody').innerHTML='<div class="small muted">首次发布新版后，GitHub Actions 会生成 backtest.json 和 data_audit.json。</div>';}
 }
 function restoreAutoOptions(){

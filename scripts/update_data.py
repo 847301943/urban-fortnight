@@ -46,9 +46,12 @@ FINANCIAL_DETAIL_LIMIT = int(os.getenv("FINANCIAL_DETAIL_LIMIT", "260"))
 FINANCIAL_DETAIL_WORKERS = int(os.getenv("FINANCIAL_DETAIL_WORKERS", "4"))
 DIVIDEND_DETAIL_LIMIT = int(os.getenv("DIVIDEND_DETAIL_LIMIT", "220"))
 DIVIDEND_DETAIL_WORKERS = int(os.getenv("DIVIDEND_DETAIL_WORKERS", "4"))
-SHORT_HISTORY_LIMIT = int(os.getenv("SHORT_HISTORY_LIMIT", "320"))
-SHORT_HISTORY_WORKERS = int(os.getenv("SHORT_HISTORY_WORKERS", "4"))
-SHORT_HISTORY_CALENDAR_DAYS = int(os.getenv("SHORT_HISTORY_CALENDAR_DAYS", "1250"))
+SHORT_HISTORY_LIMIT = int(os.getenv("SHORT_HISTORY_LIMIT", "1200"))
+SHORT_HISTORY_WORKERS = int(os.getenv("SHORT_HISTORY_WORKERS", "6"))
+SHORT_HISTORY_CALENDAR_DAYS = int(os.getenv("SHORT_HISTORY_CALENDAR_DAYS", "820"))
+SHORT_MIN_AMOUNT = float(os.getenv("SHORT_MIN_AMOUNT", "150000000"))
+SHORT_MIN_PRICE = float(os.getenv("SHORT_MIN_PRICE", "2"))
+SHORT_MAX_PRICE = float(os.getenv("SHORT_MAX_PRICE", "200"))
 SHORT_CACHE = ROOT / "data" / ".short_history_cache.pkl"
 
 FINANCIAL_KEYWORDS = ("银行", "保险", "证券", "多元金融", "信托", "期货")
@@ -701,9 +704,12 @@ def fetch_market_history(start_date: str, end_date: str) -> tuple[pd.DataFrame, 
 
 
 def short_history_candidates(stocks: list[dict], limit: int) -> list[dict]:
-    """Choose a liquid, diversified shortlist for exact daily-bar enrichment."""
-    if limit <= 0:
-        return []
+    """Build the current-day overnight pool and refresh every selected stock.
+
+    This is not a rotation.  The pool is rebuilt from the latest whole-market
+    snapshot on every run.  Stocks outside the pool are excluded mainly for
+    liquidity/tradability reasons rather than treated as missing data.
+    """
     eligible: list[tuple[float, dict]] = []
     for stock in stocks:
         name = str(stock.get("name") or "")
@@ -711,38 +717,48 @@ def short_history_candidates(stocks: list[dict], limit: int) -> list[dict]:
         amount = numeric(stock.get("amount"))
         market_cap = numeric(stock.get("marketCap"))
         turnover = numeric(stock.get("turnover"))
-        if not price or price <= 0 or name.upper().startswith(("ST", "*ST")) or "退" in name:
+        pct = numeric(stock.get("pctChange"))
+        reasons: list[str] = []
+        if not price or price <= 0:
+            reasons.append("无有效价格或停牌")
+        if name.upper().startswith(("ST", "*ST", "S*ST")) or "退" in name:
+            reasons.append("ST或退市风险")
+        if price is not None and not (SHORT_MIN_PRICE <= price <= SHORT_MAX_PRICE):
+            reasons.append(f"股价不在{SHORT_MIN_PRICE:g}至{SHORT_MAX_PRICE:g}元隔日池范围")
+        if amount is None or amount < SHORT_MIN_AMOUNT:
+            reasons.append(f"当日成交额低于{SHORT_MIN_AMOUNT/1e8:.1f}亿元")
+        if turnover is not None and turnover > 20:
+            reasons.append("换手率过高")
+        if pct is not None and pct <= -9.5:
+            reasons.append("接近跌停")
+        if reasons:
+            stock["shortPoolEligible"] = 0
+            stock["shortPoolSelected"] = 0
+            stock["shortPoolReason"] = "；".join(reasons[:3])
             continue
-        if amount is not None and amount < 2e7:
-            continue
-        liquidity = math.log10(max(amount or 3e7, 1e6)) * 12
-        size = math.log10(max((market_cap or 10) * 1e8, 1e8)) * 4
-        quality = min(max(numeric(stock.get("roe")) or 0, -10), 35) * 0.7
-        momentum = min(max(numeric(stock.get("raw60Return")) or 0, -30), 50) * 0.25
-        activity = min(max(turnover or 0, 0), 12) * 1.1
-        eligible.append((liquidity + size + quality + momentum + activity, stock))
-    eligible.sort(key=lambda x: x[0], reverse=True)
 
-    # Preserve industry breadth instead of allowing one hot sector to occupy the list.
-    chosen: list[dict] = []
-    industry_count: dict[str, int] = {}
-    soft_cap = max(8, limit // 18)
-    for _, stock in eligible:
-        industry = str(stock.get("industry") or "未分类")
-        if industry_count.get(industry, 0) >= soft_cap:
-            continue
-        chosen.append(stock)
-        industry_count[industry] = industry_count.get(industry, 0) + 1
-        if len(chosen) >= limit:
-            return chosen
-    selected_codes = {x["code"] for x in chosen}
+        stock["shortPoolEligible"] = 1
+        stock["shortPoolSelected"] = 0
+        stock["shortPoolReason"] = "通过成交额、价格与风险初筛"
+        # Overnight trading prioritises actual tradability and current strength.
+        liquidity = math.log10(max(amount or SHORT_MIN_AMOUNT, 1e6)) * 18
+        activity = min(max(turnover or 0, 0), 12) * 1.8
+        momentum = min(max(numeric(stock.get("raw60Return")) or 0, -25), 45) * 0.45
+        day_strength = min(max(pct or 0, -8), 9) * 1.8
+        size = math.log10(max((market_cap or 10) * 1e8, 1e8)) * 2.5
+        quality_guard = min(max(numeric(stock.get("roe")) or 0, -10), 30) * 0.25
+        eligible.append((liquidity + activity + momentum + day_strength + size + quality_guard, stock))
+
+    eligible.sort(key=lambda x: x[0], reverse=True)
+    selected = eligible if limit <= 0 else eligible[:limit]
+    selected_codes = {stock["code"] for _, stock in selected}
     for _, stock in eligible:
         if stock["code"] in selected_codes:
-            continue
-        chosen.append(stock)
-        if len(chosen) >= limit:
-            break
-    return chosen
+            stock["shortPoolSelected"] = 1
+            stock["shortPoolReason"] = "进入当日隔日池，日K将在本次运行中刷新"
+        else:
+            stock["shortPoolReason"] = "通过基础门槛，但超出本次隔日池容量（按成交额与强度排序）"
+    return [stock for _, stock in selected]
 
 
 def _industry_environment(metrics_by_code: dict[str, dict], stock_by_code: dict[str, dict]) -> tuple[dict[str, dict], float]:
@@ -811,6 +827,8 @@ def enrich_short_history(stocks: list[dict], updated_at: str) -> tuple[int, floa
     industry_meta, overall_ret20 = _industry_environment(metrics_by_code, stock_by_code)
     for code, metrics in metrics_by_code.items():
         stock = stock_by_code[code]
+        stock["shortPoolEligible"] = 1
+        stock["shortPoolSelected"] = 1
         industry = str(stock.get("industry") or "未分类")
         ind = industry_meta.get(industry, {"industryShortScore": 50.0})
         metrics.update(ind)
@@ -831,17 +849,25 @@ def enrich_short_history(stocks: list[dict], updated_at: str) -> tuple[int, floa
         stock["relativeStrength"] = metrics.get("relativeStrength20")
     for stock in stocks:
         if stock["code"] not in metrics_by_code:
-            stock.setdefault("shortDataLevel", "未补充日K")
             stock.setdefault("shortDataCoverage", 0)
             stock.setdefault("shortCoverage", 0)
-            stock.setdefault("shortDecision", "短线数据未覆盖")
             stock.setdefault("shortGroup", "data")
-            stock.setdefault("shortAction", "该股票未进入日K补全池，不能用当前页面做短线判断。")
             stock.setdefault("eventRiskCoverage", 0)
             stock.setdefault("eventRiskNote", "尚未自动覆盖公告、减持、解禁、停复牌与业绩披露窗口")
             stock.setdefault("trendDataLevel", "行情快照趋势代理")
-            if stock["code"] in errors:
-                stock["shortHistoryError"] = errors[stock["code"]]
+            if stock.get("shortPoolSelected"):
+                stock["shortDataLevel"] = "日K获取失败"
+                stock["shortDecision"] = "日K获取失败"
+                stock["shortAction"] = "已进入当日隔日池，但本次日K接口失败；本日不形成隔日计划。"
+                stock["shortHistoryError"] = errors.get(stock["code"], "接口未返回足够日K")
+            elif stock.get("shortPoolEligible"):
+                stock["shortDataLevel"] = "隔日池容量外"
+                stock["shortDecision"] = "隔日池容量外"
+                stock["shortAction"] = "基础流动性合格，但未进入本次优先池；不是轮换旧数据，本日不形成信号。"
+            else:
+                stock["shortDataLevel"] = "未进入隔日池"
+                stock["shortDecision"] = "未进入隔日池"
+                stock["shortAction"] = stock.get("shortPoolReason") or "流动性、价格或风险门槛不适合常规隔日策略。"
     return len(histories), market_score, market_source, histories, market_frame
 
 
@@ -1181,7 +1207,7 @@ def build() -> dict:
     roic_count = sum(numeric(x.get("roic")) is not None for x in stocks)
     fcf_count = sum(numeric(x.get("fcfYield")) is not None for x in stocks)
     return {
-        "schemaVersion": 7,
+        "schemaVersion": 8,
         "updatedAt": updated_at,
         "tradeDate": trade_date,
         "source": f"AKShare公开接口（{spot_source}；GitHub后台整理，无需数据Token）",
@@ -1195,7 +1221,10 @@ def build() -> dict:
             "financialSpecialMetrics": financial_special_count,
             "dividendYield": sum(numeric(x.get("dividendYield")) is not None for x in stocks),
             "dividendSupplemented": dividend_supplemented,
+            "shortPoolEligible": sum(bool(x.get("shortPoolEligible")) for x in stocks),
+            "shortPoolSelected": sum(bool(x.get("shortPoolSelected")) for x in stocks),
             "shortHistoryFetched": short_history_count,
+            "shortHistoryFailed": sum(x.get("shortDataLevel") == "日K获取失败" for x in stocks),
             "shortExact250Bars": sum(x.get("shortDataLevel") == "精确日K" for x in stocks),
             "shortScored": sum(numeric(x.get("shortScore")) is not None for x in stocks),
             "eventRisk": 0,
@@ -1209,8 +1238,8 @@ def build() -> dict:
             "ROIC为计算指标：全市场采用经营投入资本估算口径，优先候选在完整报表可用时采用权益+有息负债-现金口径。",
             "自由现金流：优先候选采用经营现金流减资本开支；其余非金融股采用经营现金流加投资现金流净额的代理，并在网页明确标注口径。",
             "银行、保险、券商自动切换行业模型；专项监管指标由F10主要指标接口尽力补充，接口缺失时只给基础判断，不伪造。",
-            f"短线模块仅对约{SHORT_HISTORY_LIMIT}只高流动性、分行业候选补取前复权日K；市场日K来源：{market_history_source}，当前市场环境分：{market_short_score}。",
-            "短线信号使用真实MA、RSI、MACD、ATR、突破及量价结构，并与长期价值判断完全分开；未进入日K补全池的股票不得据此做短线结论。",
+            f"隔日模块每次按最新全市场快照重新建立当日池，不做轮换；门槛为当日成交额至少{SHORT_MIN_AMOUNT/1e8:.1f}亿元、股价{SHORT_MIN_PRICE:g}至{SHORT_MAX_PRICE:g}元等，最多刷新{SHORT_HISTORY_LIMIT if SHORT_HISTORY_LIMIT>0 else '全部'}只；市场日K来源：{market_history_source}，当前市场环境分：{market_short_score}。",
+            "隔日信号在收盘后生成，使用真实MA、收盘位置、量价、RSI/MACD/ATR；计划为次日开盘确认，A股T+1下最早再下一交易日退出。未进入当日池的股票不是数据缺失，而是不满足本策略交易性门槛。",
             "短线模块尚未自动覆盖公告、减持、解禁、停复牌和财报披露窗口；页面会明确显示事件风险未覆盖。",
             "盈利预测调整、应收/存货异常和股本稀释仍可能缺失，缺失字段不应被当作利好。",
         ],

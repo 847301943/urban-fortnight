@@ -27,9 +27,9 @@ STOCKS_FILE = DATA / "stocks.json"
 CACHE_FILE = DATA / ".short_history_cache.pkl"
 BACKTEST_FILE = DATA / "backtest.json"
 AUDIT_FILE = DATA / "data_audit.json"
-BACKTEST_LIMIT = int(os.getenv("BACKTEST_LIMIT", "180"))
-BACKTEST_HOLDING_DAYS = int(os.getenv("BACKTEST_HOLDING_DAYS", "10"))
-BACKTEST_FEE_BPS = float(os.getenv("BACKTEST_FEE_BPS", "18"))
+BACKTEST_LIMIT = int(os.getenv("BACKTEST_LIMIT", "500"))
+BACKTEST_HOLDING_DAYS = int(os.getenv("BACKTEST_HOLDING_DAYS", "1"))
+BACKTEST_FEE_BPS = float(os.getenv("BACKTEST_FEE_BPS", "20"))
 
 
 def finite(value):
@@ -148,16 +148,16 @@ def make_backtest(payload: dict, cache: dict) -> dict:
     all_trades.sort(key=lambda x: (x["signalDate"], x["code"]))
     overall = summary_from_trades(all_trades)
     report = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "generatedAt": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %z"),
         "status": "完成" if tested else "无可用历史数据",
-        "strategy": "真实日K短线状态回测：突破确认／回踩关注／趋势跟踪",
+        "strategy": "收盘后隔日计划回测：隔日突破／隔日回踩／收盘强势",
         "execution": {
-            "entry": "信号后下一交易日开盘价",
-            "exit": f"最多持有{BACKTEST_HOLDING_DAYS}个交易日，或触发ATR/MA20保护位",
+            "entry": "信号日收盘后生成计划；下一交易日开盘，跳空范围-4%至+2.5%才允许模拟介入",
+            "exit": f"A股T+1约束：买入当日不允许卖出；默认在再下一交易日收盘或保护位/1.5R目标退出（holding_days={BACKTEST_HOLDING_DAYS}）",
             "feeBpsRoundTrip": BACKTEST_FEE_BPS,
             "positionRule": "同一股票上一笔交易退出后才允许新开仓",
-            "lookAhead": "指标只使用信号日及以前数据",
+            "lookAhead": "指标只使用信号日及以前数据；不使用信号日收盘价虚拟成交",
         },
         "sample": {
             "eligibleHistories": len(histories),
@@ -178,6 +178,7 @@ def make_backtest(payload: dict, cache: dict) -> dict:
             "没有纳入历史退市股、ST状态变化、停牌、涨跌停无法成交、除权异常、融资约束和真实滑点。",
             "没有纳入公告、减持、解禁、业绩披露窗口、龙虎榜和盘中盘口，因此不能据此直接下单。",
             "行业环境在历史回测中采用中性值，当前页面的行业广度分只用于最新截面信号。",
+            "这是收盘后生成、次日介入的现实模型，不是买在信号日尾盘并次日卖出的理想化回测。",
             "回测用于检查代码、信号方向和数据覆盖，不代表未来收益，也不是投资建议。",
         ],
         "errors": errors[:20],
@@ -203,6 +204,9 @@ def audit_data(payload: dict, backtest: dict) -> dict:
     financial = [x for x in stocks if str(x.get("financialType") or "general") != "general"]
     financial_special = sum(x.get("financialMetricLevel") in {"专项", "部分专项"} for x in financial)
     short = [x for x in stocks if finite(x.get("shortScore")) is not None]
+    short_pool_eligible = [x for x in stocks if bool(x.get("shortPoolEligible"))]
+    short_pool_selected = [x for x in stocks if bool(x.get("shortPoolSelected"))]
+    short_failed = [x for x in stocks if x.get("shortDataLevel") == "日K获取失败"]
     exact_short = sum(x.get("shortDataLevel") == "精确日K" for x in stocks)
     static_pe = sum("静态PE" in str(x.get("peMethod") or "") for x in stocks)
     proxy_fcf = sum("代理" in str(x.get("fcfMethod") or "") for x in stocks)
@@ -212,8 +216,14 @@ def audit_data(payload: dict, backtest: dict) -> dict:
     def issue(level: str, title: str, detail: str, action: str):
         issues.append({"level": level, "title": title, "detail": detail, "action": action})
 
-    if percentage(len(short), total) < 15:
-        issue("提示", "短线日K只覆盖候选池", f"当前覆盖{len(short)}/{total}只。", "保持两阶段设计；短线只对高流动性候选补日K，不要把未覆盖股票判成弱势。")
+    selected_count = len(short_pool_selected)
+    selected_coverage = percentage(len(short), selected_count)
+    if selected_count == 0:
+        issue("高", "隔日池为空", "没有股票进入当日隔日池。", "检查行情快照、成交额单位以及SHORT_MIN_AMOUNT设置。")
+    elif selected_coverage < 85:
+        issue("高", "隔日池日K刷新率偏低", f"当日选中{selected_count}只，成功形成指标{len(short)}只，刷新率{selected_coverage}%。", "检查东方财富/腾讯日K接口限流；本日失败股票不得沿用旧信号。")
+    elif len(short_pool_eligible) > selected_count:
+        issue("提示", "隔日池达到容量上限", f"基础合格{len(short_pool_eligible)}只，本次选择{selected_count}只。", "提高SHORT_HISTORY_LIMIT或提高最低成交额；不要用轮换旧信号补足。")
     if event_covered == 0:
         issue("高", "事件风险尚未覆盖", "公告、减持、解禁、停复牌和财报披露窗口均未自动纳入。", "短线信号旁固定显示未覆盖警告；下单前人工检查公告。")
     if coverage["EPS预期调整"]["pct"] < 10:
@@ -230,7 +240,7 @@ def audit_data(payload: dict, backtest: dict) -> dict:
         issue("提示", "回测交易样本偏少", f"当前交易数{backtest.get('overall', {}).get('trades', 0)}。", "扩大历史跨度或候选数量后再评价稳定性，不能据少量交易调参数。")
 
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "generatedAt": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %z"),
         "stockCount": total,
         "coverage": coverage,
@@ -239,16 +249,20 @@ def audit_data(payload: dict, backtest: dict) -> dict:
             "proxyFreeCashFlow": {"count": proxy_fcf, "pct": percentage(proxy_fcf, total)},
             "financialStocks": len(financial),
             "financialSpecial": {"count": financial_special, "pctOfFinancial": percentage(financial_special, len(financial))},
-            "shortHistory": {"count": len(short), "pct": percentage(len(short), total)},
-            "shortExact250Bars": {"count": exact_short, "pct": percentage(exact_short, total)},
+            "shortPoolEligible": {"count": len(short_pool_eligible), "pctOfMarket": percentage(len(short_pool_eligible), total)},
+            "shortPoolSelected": {"count": len(short_pool_selected), "pctOfEligible": percentage(len(short_pool_selected), len(short_pool_eligible))},
+            "shortHistory": {"count": len(short), "pctOfSelected": percentage(len(short), len(short_pool_selected))},
+            "shortHistoryFailed": {"count": len(short_failed), "pctOfSelected": percentage(len(short_failed), len(short_pool_selected))},
+            "shortExact250Bars": {"count": exact_short, "pctOfSelected": percentage(exact_short, len(short_pool_selected))},
             "eventRisk": {"count": event_covered, "pct": percentage(event_covered, total)},
             "staticPE": {"count": static_pe, "pct": percentage(static_pe, total)},
         },
         "issues": issues,
         "interpretation": [
             "覆盖率低不代表公司差，只代表当前自动数据不能支持该项结论。",
-            "长期价值结论和短线技术信号必须分开阅读；两者方向冲突时不自动合并为买入建议。",
-            "短线信号必须同时检查成交可行性和事件风险。",
+            "未进入隔日池通常代表流动性、价格或风险门槛不适合本策略，不应统计成数据缺失。",
+            "长期价值结论和隔日信号必须分开阅读；两者方向冲突时不自动合并为买入建议。",
+            "隔日计划必须检查次日开盘跳空、成交可行性和事件风险。",
         ],
     }
 

@@ -1,8 +1,12 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "generatedAt": "等待 GitHub Actions 首次生成",
   "status": "待运行",
-  "strategy": "真实日K短线状态回测",
+  "strategy": "收盘后隔日计划回测：隔日突破／隔日回踩／收盘强势",
+  "execution": {
+    "entry": "T日收盘后生成计划，T+1开盘在-4%至+2.5%跳空范围内介入",
+    "exit": "A股T+1：最早T+2退出"
+  },
   "sample": {"eligibleHistories": 0, "testedStocks": 0, "periodStart": null, "periodEnd": null},
   "overall": {"trades": 0, "winRate": null, "averageReturnPct": null, "profitFactor": null},
   "validation": {"splitDate": null, "laterValidation": {"trades": 0, "winRate": null, "averageReturnPct": null}},

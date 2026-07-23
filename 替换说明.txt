@@ -1,14 +1,14 @@
-本升级包需要同时替换/新增以下文件：
+本升级包是“隔日短线专版”，必须同时替换/新增以下文件：
 
 仓库根目录：
 - index.html
 - requirements.txt
-- README.md（可选）
+- README.md
 
 scripts 目录：
 - scripts/update_data.py
-- scripts/short_strategy.py（新增）
-- scripts/backtest_short.py（新增）
+- scripts/short_strategy.py
+- scripts/backtest_short.py
 
 .github/workflows 目录：
 - .github/workflows/update-stock-data.yml
@@ -16,7 +16,11 @@ scripts 目录：
 上传后：
 1. Settings → Pages → Source 确认是 GitHub Actions。
 2. Actions → 更新并发布大A智能选股网页 → Run workflow。
-3. 第一次运行会获取全A数据、补充短线日K、执行回测和审计，耗时会比旧版长。
-4. 运行成功后，网页“策略回测与数据审计”区域会显示真实回测报告。
+3. 首次运行最多刷新1200只隔日候选，可能比旧版耗时更长。
+4. 成功后查看网页“策略回测与数据审计”。
 
-注意：不要只替换 index.html；否则短线指标和回测数据不会生成。
+注意：
+- 不是轮换池，入选当日隔日池的股票每次运行都会刷新。
+- 未进入隔日池不等于数据缺失。
+- 收盘后生成信号，次日高开超过2.5%不追。
+- A股T+1，次日买入后最早再下一交易日退出。

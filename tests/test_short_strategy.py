@@ -47,9 +47,9 @@ def main() -> None:
         frame = make_history(kind)
         metrics = latest_short_metrics(frame)
         score = score_short_metrics(metrics, 65 if kind != "downtrend" else 35, 60 if kind != "downtrend" else 35)
-        bt = backtest_frame(frame, BacktestConfig(holding_days=10, fee_bps=18), market_frame=make_history("uptrend", seed=99))
+        bt = backtest_frame(frame, BacktestConfig(holding_days=1, fee_bps=20), market_frame=make_history("uptrend", seed=99))
         result[kind] = {"decision": score["shortDecision"], "score": score["shortScore"], "coverage": score["shortCoverage"], "trades": bt.get("trades", 0), "winRate": bt.get("winRate"), "averageReturnPct": bt.get("averageReturnPct")}
-    assert result["downtrend"]["decision"] in {"弱势规避", "等待信号", "短线数据不足"}
+    assert result["downtrend"]["decision"] in {"弱势规避", "等待隔日形态", "隔日数据不足", "等待隔日触发"}
     assert result["uptrend"]["coverage"] >= 80
     assert result["breakout"]["score"] >= result["downtrend"]["score"]
     out = ROOT / "data" / "synthetic_test.json"
