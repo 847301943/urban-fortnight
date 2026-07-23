@@ -34,6 +34,8 @@ QUARTERS_TO_TRY = int(os.getenv("QUARTERS_TO_TRY", "6"))
 ANNUAL_YEARS = int(os.getenv("ANNUAL_YEARS", "4"))
 DETAIL_LIMIT = int(os.getenv("DETAIL_LIMIT", "200"))
 DETAIL_WORKERS = int(os.getenv("DETAIL_WORKERS", "5"))
+FINANCIAL_DETAIL_LIMIT = int(os.getenv("FINANCIAL_DETAIL_LIMIT", "220"))
+FINANCIAL_DETAIL_WORKERS = int(os.getenv("FINANCIAL_DETAIL_WORKERS", "4"))
 
 FINANCIAL_KEYWORDS = ("银行", "保险", "证券", "多元金融", "信托", "期货")
 
@@ -230,8 +232,125 @@ def effective_tax_rate(total_profit, net_profit, income_tax=None):
     return 0.25
 
 
+def financial_type(industry: str) -> str:
+    text = str(industry or "")
+    if "银行" in text:
+        return "bank"
+    if "保险" in text:
+        return "insurance"
+    if "证券" in text or "券商" in text:
+        return "broker"
+    if any(keyword in text for keyword in ("多元金融", "信托", "期货", "金融服务")):
+        return "diversified"
+    return "general"
+
+
 def is_financial(industry: str) -> bool:
-    return any(keyword in str(industry or "") for keyword in FINANCIAL_KEYWORDS)
+    return financial_type(industry) != "general"
+
+
+def eastmoney_secu_code(code: str) -> str:
+    if code.startswith(("6", "68")):
+        return f"{code}.SH"
+    if code.startswith(("4", "8", "92")):
+        return f"{code}.BJ"
+    return f"{code}.SZ"
+
+
+def latest_indicator_record(frame: pd.DataFrame) -> dict:
+    if frame is None or frame.empty:
+        return {}
+    work = frame.copy()
+    for col in ("REPORT_DATE", "REPORTDATE", "报告日期"):
+        if col in work.columns:
+            work["__date"] = pd.to_datetime(work[col], errors="coerce")
+            work = work.sort_values("__date", ascending=False)
+            break
+    return work.iloc[0].to_dict() if not work.empty else {}
+
+
+def fuzzy_number(record: dict, exact: Iterable[str] = (), token_groups: Iterable[tuple[str, ...]] = ()):
+    value = first_number(record, exact)
+    if value is not None:
+        return value
+    normalized = {str(k).upper().replace("_", ""): k for k in record.keys()}
+    for tokens in token_groups:
+        norm_tokens = tuple(str(x).upper().replace("_", "") for x in tokens)
+        for norm_key, original in normalized.items():
+            if all(token in norm_key for token in norm_tokens):
+                value = numeric(record.get(original))
+                if value is not None:
+                    return value
+    return None
+
+
+def financial_metric_for_stock(stock: dict) -> tuple[str, dict]:
+    code = stock["code"]
+    model = financial_type(stock.get("industry", ""))
+    payload = {
+        "financialType": model,
+        "financialMetricLevel": "基础",
+        "financialMetricMethod": "ROE、PB、利润趋势和股息率基础模型",
+    }
+    if model == "general":
+        return code, payload
+    try:
+        frame = call_with_retry(
+            f"financial_indicator({code})",
+            lambda: ak.stock_financial_analysis_indicator_em(
+                symbol=eastmoney_secu_code(code), indicator="按报告期"
+            ),
+            attempts=2,
+            base_wait=2.5,
+        )
+        record = latest_indicator_record(frame)
+        payload["roa"] = fuzzy_number(record, ("ZZCJLL", "ROA", "JROA", "TOTAL_ASSET_ROA"), (("ROA",), ("TOTAL", "ASSET", "RETURN")))
+        f10_roe = fuzzy_number(record, ("ROEJQ", "ROEKCJQ", "ROE"), (("ROE",),))
+        f10_profit_growth = fuzzy_number(record, ("PARENTNETPROFITTZ", "NET_PROFIT_YOY"), (("NET", "PROFIT", "YOY"),))
+        f10_revenue_growth = fuzzy_number(record, ("TOTALOPERATEREVETZ", "OPERATE_INCOME_YOY"), (("OPERATE", "INCOME", "YOY"),))
+        if f10_roe is not None:
+            payload["roe"] = f10_roe
+        if f10_profit_growth is not None:
+            payload["profitGrowthQ"] = f10_profit_growth
+        if f10_revenue_growth is not None:
+            payload["revenueGrowthQ"] = f10_revenue_growth
+        if model == "bank":
+            payload.update({
+                "nplRatio": fuzzy_number(record, ("NON_PERFORMING_LOAN_RATIO", "NONPERFORMING_LOAN_RATIO", "NONPERFORM_LOAN_RATIO", "NPL_RATIO", "BLDKBL"), (("NON", "PERFORM", "LOAN", "RATIO"), ("BAD", "LOAN", "RATIO"))),
+                "provisionCoverage": fuzzy_number(record, ("PROVISION_COVERAGE", "PROVISION_COVERAGE_RATIO", "BAD_LOAN_COVERAGE", "LOAN_PROVISION_COVERAGE", "BLDKBBL"), (("PROVISION", "COVER"), ("BAD", "LOAN", "COVER"))),
+                "netInterestMargin": fuzzy_number(record, ("NET_INTEREST_MARGIN", "NET_INTEREST_SPREAD", "NET_INTEREST_MARGIN_RATIO", "JXCL"), (("NET", "INTEREST", "MARGIN"),)),
+                "coreTier1CapitalAdequacy": fuzzy_number(record, ("CORE_TIER1_CAPITAL_ADEQUACY_RATIO", "CORE_TIER1_CAPITAL_ADEQUACY", "CORE_CAPITAL_ADEQUACY_RATIO"), (("CORE", "TIER1", "CAPITAL"),)),
+                "capitalAdequacy": fuzzy_number(record, ("CAPITAL_ADEQUACY_RATIO", "CAPITAL_ADEQUACY"), (("CAPITAL", "ADEQUACY"),)),
+            })
+        elif model == "insurance":
+            payload.update({
+                "solvencyRatio": fuzzy_number(record, ("COMPREHENSIVE_SOLVENCY_ADEQUACY_RATIO", "SOLVENCY_ADEQUACY_RATIO"), (("SOLVENCY", "ADEQUACY"),)),
+                "coreSolvencyRatio": fuzzy_number(record, ("CORE_SOLVENCY_ADEQUACY_RATIO",), (("CORE", "SOLVENCY"),)),
+                "nbvGrowth": fuzzy_number(record, ("NBV_GROWTH", "NEW_BUSINESS_VALUE_GROWTH"), (("NEW", "BUSINESS", "VALUE", "GROWTH"),)),
+                "embeddedValueGrowth": fuzzy_number(record, ("EMBEDDED_VALUE_GROWTH", "EV_GROWTH"), (("EMBEDDED", "VALUE", "GROWTH"),)),
+                "combinedRatio": fuzzy_number(record, ("COMBINED_RATIO",), (("COMBINED", "RATIO"),)),
+                "pev": fuzzy_number(record, ("PEV", "P_EV"), (("PEV",),)),
+            })
+        elif model == "broker":
+            payload.update({
+                "riskCoverageRatio": fuzzy_number(record, ("RISK_COVERAGE_RATIO",), (("RISK", "COVERAGE"),)),
+                "capitalLeverageRatio": fuzzy_number(record, ("CAPITAL_LEVERAGE_RATIO",), (("CAPITAL", "LEVERAGE"),)),
+                "liquidityCoverageRatio": fuzzy_number(record, ("LIQUIDITY_COVERAGE_RATIO",), (("LIQUIDITY", "COVERAGE"),)),
+                "netStableFundingRatio": fuzzy_number(record, ("NET_STABLE_FUNDING_RATIO", "NET_FUNDING_RATIO"), (("NET", "STABLE", "FUNDING"),)),
+                "netCapital": fuzzy_number(record, ("NET_CAPITAL", "PROPRIETARY_CAPITAL"), (("NET", "CAPITAL"),)),
+            })
+        specialty_keys = {
+            "bank": ("nplRatio", "provisionCoverage", "netInterestMargin", "coreTier1CapitalAdequacy"),
+            "insurance": ("solvencyRatio", "coreSolvencyRatio", "nbvGrowth", "embeddedValueGrowth"),
+            "broker": ("riskCoverageRatio", "capitalLeverageRatio", "liquidityCoverageRatio", "netStableFundingRatio"),
+            "diversified": ("roa",),
+        }.get(model, ())
+        found = sum(numeric(payload.get(k)) is not None for k in specialty_keys)
+        payload["financialMetricLevel"] = "专项" if found >= max(2, len(specialty_keys) // 2) else ("部分专项" if found else "基础")
+        payload["financialMetricMethod"] = "东方财富F10主要指标；缺失字段不推算" if found else "专项接口未返回可识别字段，保留基础模型"
+    except Exception as exc:
+        payload["financialMetricMethod"] = f"专项接口失败，保留基础模型：{exc}"
+    return code, payload
 
 
 def bulk_roic(report: dict, balance: dict, income: dict, industry: str):
@@ -570,6 +689,26 @@ def build() -> dict:
             "code": code,
             "name": str(q.get("名称") or report.get("股票简称") or ""),
             "industry": industry,
+            "financialType": financial_type(industry),
+            "financialMetricLevel": "基础" if is_financial(industry) else "不适用",
+            "financialMetricMethod": "ROE、PB、利润趋势和股息率基础模型" if is_financial(industry) else "普通企业模型",
+            "roa": None,
+            "nplRatio": None,
+            "provisionCoverage": None,
+            "netInterestMargin": None,
+            "coreTier1CapitalAdequacy": None,
+            "capitalAdequacy": None,
+            "solvencyRatio": None,
+            "coreSolvencyRatio": None,
+            "nbvGrowth": None,
+            "embeddedValueGrowth": None,
+            "combinedRatio": None,
+            "pev": None,
+            "riskCoverageRatio": None,
+            "capitalLeverageRatio": None,
+            "liquidityCoverageRatio": None,
+            "netStableFundingRatio": None,
+            "netCapital": None,
             "price": price,
             "pctChange": pct,
             "marketCap": market_cap,
@@ -651,10 +790,33 @@ def build() -> dict:
             if stock["code"] in updates:
                 stock.update({k: v for k, v in updates[stock["code"]].items() if v is not None or k.endswith("Method") or k == "cashFlowDataLevel"})
 
+    financial_candidates = [x for x in stocks if is_financial(x.get("industry", ""))]
+    if FINANCIAL_DETAIL_LIMIT > 0:
+        financial_candidates = financial_candidates[:FINANCIAL_DETAIL_LIMIT]
+        log(f"financial industry enrichment candidates: {len(financial_candidates)}")
+        financial_updates: dict[str, dict] = {}
+        with ThreadPoolExecutor(max_workers=max(1, FINANCIAL_DETAIL_WORKERS)) as executor:
+            futures = {executor.submit(financial_metric_for_stock, stock): stock["code"] for stock in financial_candidates}
+            for index, future in enumerate(as_completed(futures), 1):
+                code = futures[future]
+                try:
+                    result_code, payload = future.result()
+                    financial_updates[result_code] = payload
+                except Exception as exc:
+                    log(f"financial enrichment {code} failed: {exc}")
+                if index % 20 == 0:
+                    log(f"financial enrichment progress: {index}/{len(financial_candidates)}")
+        for stock in stocks:
+            if stock["code"] in financial_updates:
+                update = financial_updates[stock["code"]]
+                stock.update({k: v for k, v in update.items() if v is not None or k in {"financialType", "financialMetricLevel", "financialMetricMethod"}})
+
+    financial_count = sum(is_financial(x.get("industry", "")) for x in stocks)
+    financial_special_count = sum(x.get("financialMetricLevel") in {"专项", "部分专项"} for x in stocks)
     roic_count = sum(numeric(x.get("roic")) is not None for x in stocks)
     fcf_count = sum(numeric(x.get("fcfYield")) is not None for x in stocks)
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 4,
         "updatedAt": updated_at,
         "tradeDate": trade_date,
         "source": f"AKShare公开接口（{spot_source}；GitHub后台整理，无需数据Token）",
@@ -664,12 +826,14 @@ def build() -> dict:
             "roic": roic_count,
             "fcfYield": fcf_count,
             "exactCashFlow": exact_count,
+            "financialStocks": financial_count,
+            "financialSpecialMetrics": financial_special_count,
         },
         "notes": [
             f"行情入口：{spot_source}。东财 push2 拒绝 GitHub 服务器时自动切换新浪；新浪缺失的估值字段从财报计算或留空，不伪造。",
             "ROIC为计算指标：全市场采用经营投入资本估算口径，优先候选在完整报表可用时采用权益+有息负债-现金口径。",
             "自由现金流：优先候选采用经营现金流减资本开支；其余非金融股采用经营现金流加投资现金流净额的保守代理，并在网页明确标注口径。",
-            "银行、保险、券商等金融企业不套用工业企业ROIC和自由现金流公式。",
+            "银行、保险、券商自动切换行业模型；专项监管指标由F10主要指标接口尽力补充，接口缺失时只给基础判断，不伪造。",
             "三年现金流趋势采用最近三个完整年度；单位数组为亿元。",
             "均线字段仍使用60日涨幅和年初至今涨幅作为趋势代理。",
         ],
