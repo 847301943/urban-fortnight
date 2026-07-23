@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "等待 GitHub Actions 首次生成",
+  "stockCount": 0,
+  "coverage": {},
+  "specialCoverage": {},
+  "issues": [
+    {"level": "提示", "title": "等待首次数据更新", "detail": "当前是占位报告。", "action": "上传后手动运行一次 GitHub Actions。"}
+  ]
+}

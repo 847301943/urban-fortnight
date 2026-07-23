@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "等待 GitHub Actions 首次生成",
+  "status": "待运行",
+  "strategy": "真实日K短线状态回测",
+  "sample": {"eligibleHistories": 0, "testedStocks": 0, "periodStart": null, "periodEnd": null},
+  "overall": {"trades": 0, "winRate": null, "averageReturnPct": null, "profitFactor": null},
+  "validation": {"splitDate": null, "laterValidation": {"trades": 0, "winRate": null, "averageReturnPct": null}},
+  "limitations": ["首次部署后由 GitHub Actions 生成真实A股日K回测报告。"]
+}

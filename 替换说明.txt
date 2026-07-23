@@ -1,0 +1,22 @@
+本升级包需要同时替换/新增以下文件：
+
+仓库根目录：
+- index.html
+- requirements.txt
+- README.md（可选）
+
+scripts 目录：
+- scripts/update_data.py
+- scripts/short_strategy.py（新增）
+- scripts/backtest_short.py（新增）
+
+.github/workflows 目录：
+- .github/workflows/update-stock-data.yml
+
+上传后：
+1. Settings → Pages → Source 确认是 GitHub Actions。
+2. Actions → 更新并发布大A智能选股网页 → Run workflow。
+3. 第一次运行会获取全A数据、补充短线日K、执行回测和审计，耗时会比旧版长。
+4. 运行成功后，网页“策略回测与数据审计”区域会显示真实回测报告。
+
+注意：不要只替换 index.html；否则短线指标和回测数据不会生成。

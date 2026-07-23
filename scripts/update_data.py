@@ -16,16 +16,24 @@ from __future__ import annotations
 import json
 import math
 import os
+import pickle
 import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Iterable
 
 import akshare as ak
 import pandas as pd
+
+from short_strategy import (
+    latest_short_metrics,
+    market_environment_score,
+    normalize_history_frame,
+    score_short_metrics,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "stocks.json"
@@ -34,8 +42,14 @@ QUARTERS_TO_TRY = int(os.getenv("QUARTERS_TO_TRY", "6"))
 ANNUAL_YEARS = int(os.getenv("ANNUAL_YEARS", "4"))
 DETAIL_LIMIT = int(os.getenv("DETAIL_LIMIT", "200"))
 DETAIL_WORKERS = int(os.getenv("DETAIL_WORKERS", "5"))
-FINANCIAL_DETAIL_LIMIT = int(os.getenv("FINANCIAL_DETAIL_LIMIT", "220"))
+FINANCIAL_DETAIL_LIMIT = int(os.getenv("FINANCIAL_DETAIL_LIMIT", "260"))
 FINANCIAL_DETAIL_WORKERS = int(os.getenv("FINANCIAL_DETAIL_WORKERS", "4"))
+DIVIDEND_DETAIL_LIMIT = int(os.getenv("DIVIDEND_DETAIL_LIMIT", "220"))
+DIVIDEND_DETAIL_WORKERS = int(os.getenv("DIVIDEND_DETAIL_WORKERS", "4"))
+SHORT_HISTORY_LIMIT = int(os.getenv("SHORT_HISTORY_LIMIT", "320"))
+SHORT_HISTORY_WORKERS = int(os.getenv("SHORT_HISTORY_WORKERS", "4"))
+SHORT_HISTORY_CALENDAR_DAYS = int(os.getenv("SHORT_HISTORY_CALENDAR_DAYS", "1250"))
+SHORT_CACHE = ROOT / "data" / ".short_history_cache.pkl"
 
 FINANCIAL_KEYWORDS = ("银行", "保险", "证券", "多元金融", "信托", "期货")
 
@@ -257,6 +271,61 @@ def eastmoney_secu_code(code: str) -> str:
     return f"{code}.SZ"
 
 
+def xueqiu_symbol(code: str) -> str:
+    if code.startswith(("6", "68")):
+        return f"SH{code}"
+    if code.startswith(("4", "8", "92")):
+        return f"BJ{code}"
+    return f"SZ{code}"
+
+
+def financial_dividend_yield(stock: dict) -> tuple[float | None, str]:
+    """Return a financial stock's TTM dividend yield with source labels.
+
+    The bulk Eastmoney snapshot normally supplies dividend yield, but the Sina
+    fallback does not.  Financial stocks are therefore enriched separately:
+    1) Xueqiu individual snapshot: current TTM dividend yield;
+    2) Eastmoney dividend-plan detail: latest implemented plan yield fallback.
+    Missing values remain blank rather than being estimated from unrelated data.
+    """
+    existing = numeric(stock.get("dividendYield"))
+    if existing is not None:
+        return existing, stock.get("dividendYieldMethod") or "全市场行情股息率"
+
+    code = stock.get("code", "")
+    try:
+        frame = ak.stock_individual_spot_xq(symbol=xueqiu_symbol(code), timeout=12)
+        if frame is not None and not frame.empty and {"item", "value"}.issubset(frame.columns):
+            record = dict(zip(frame["item"].astype(str), frame["value"]))
+            value = numeric(record.get("股息率(TTM)"))
+            if value is not None and value >= 0:
+                return value, "雪球个股行情：股息率(TTM)"
+    except Exception as exc:
+        log(f"financial dividend Xueqiu {code} skipped: {exc}")
+
+    try:
+        frame = ak.stock_fhps_detail_em(symbol=code)
+        if frame is not None and not frame.empty and "现金分红-股息率" in frame.columns:
+            work = frame.copy()
+            if "方案进度" in work.columns:
+                implemented = work[work["方案进度"].astype(str).str.contains("实施", na=False)]
+                if not implemented.empty:
+                    work = implemented
+            date_col = next((c for c in ("除权除息日", "报告期", "最新公告日期") if c in work.columns), None)
+            if date_col:
+                work["__date"] = pd.to_datetime(work[date_col], errors="coerce")
+                work = work.sort_values("__date", ascending=False)
+            values = pd.to_numeric(work["现金分红-股息率"], errors="coerce").dropna()
+            if not values.empty:
+                value = float(values.iloc[0])
+                if math.isfinite(value) and value >= 0:
+                    return value, "东方财富：最近已实施分红方案股息率（备用口径）"
+    except Exception as exc:
+        log(f"financial dividend Eastmoney {code} skipped: {exc}")
+
+    return None, "雪球TTM与分红方案接口均未取得数据"
+
+
 def latest_indicator_record(frame: pd.DataFrame) -> dict:
     if frame is None or frame.empty:
         return {}
@@ -294,6 +363,12 @@ def financial_metric_for_stock(stock: dict) -> tuple[str, dict]:
     }
     if model == "general":
         return code, payload
+
+    dividend_yield, dividend_method = financial_dividend_yield(stock)
+    payload["dividendYieldMethod"] = dividend_method
+    if dividend_yield is not None:
+        payload["dividendYield"] = dividend_yield
+
     try:
         frame = call_with_retry(
             f"financial_indicator({code})",
@@ -347,7 +422,7 @@ def financial_metric_for_stock(stock: dict) -> tuple[str, dict]:
         }.get(model, ())
         found = sum(numeric(payload.get(k)) is not None for k in specialty_keys)
         payload["financialMetricLevel"] = "专项" if found >= max(2, len(specialty_keys) // 2) else ("部分专项" if found else "基础")
-        payload["financialMetricMethod"] = "东方财富F10主要指标；缺失字段不推算" if found else "专项接口未返回可识别字段，保留基础模型"
+        payload["financialMetricMethod"] = ("东方财富F10主要指标；股息率单独按TTM补全；缺失字段不推算" if found else "专项接口未返回可识别字段；股息率单独按TTM补全")
     except Exception as exc:
         payload["financialMetricMethod"] = f"专项接口失败，保留基础模型：{exc}"
     return code, payload
@@ -562,6 +637,249 @@ def numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce")
 
 
+
+def _history_market_prefix(code: str) -> str:
+    if code.startswith(("6", "68")):
+        return "sh" + code
+    if code.startswith(("4", "8", "92")):
+        return "bj" + code
+    return "sz" + code
+
+
+def fetch_stock_history(stock: dict, start_date: str, end_date: str) -> tuple[str, pd.DataFrame, str | None]:
+    """Fetch adjusted daily bars with an independent fallback source."""
+    code = stock["code"]
+    errors: list[str] = []
+    attempts = [
+        (
+            "东方财富前复权日K",
+            lambda: ak.stock_zh_a_hist(
+                symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust="qfq"
+            ),
+        ),
+        (
+            "腾讯前复权日K",
+            lambda: ak.stock_zh_a_hist_tx(
+                symbol=_history_market_prefix(code), start_date=start_date, end_date=end_date, adjust="qfq"
+            ),
+        ),
+    ]
+    for label, call in attempts:
+        try:
+            frame = normalize_history_frame(call())
+            if len(frame) >= 80:
+                return code, frame, label
+            errors.append(f"{label}: only {len(frame)} bars")
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+    return code, pd.DataFrame(), "; ".join(errors)[-500:]
+
+
+def fetch_market_history(start_date: str, end_date: str) -> tuple[pd.DataFrame, str]:
+    attempts = [
+        ("上证指数东方财富日K", lambda: ak.stock_zh_index_daily_em(symbol="sh000001")),
+        ("上证指数新浪日K", lambda: ak.stock_zh_index_daily(symbol="sh000001")),
+    ]
+    errors: list[str] = []
+    for label, call in attempts:
+        try:
+            frame = normalize_history_frame(call())
+            if not frame.empty:
+                start = pd.to_datetime(start_date, errors="coerce")
+                end = pd.to_datetime(end_date, errors="coerce")
+                if pd.notna(start):
+                    frame = frame[frame["date"] >= start]
+                if pd.notna(end):
+                    frame = frame[frame["date"] <= end]
+                if len(frame) >= 120:
+                    return frame.reset_index(drop=True), label
+            errors.append(f"{label}: insufficient rows")
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+    log("market history unavailable: " + "; ".join(errors))
+    return pd.DataFrame(), "市场日K未取得"
+
+
+def short_history_candidates(stocks: list[dict], limit: int) -> list[dict]:
+    """Choose a liquid, diversified shortlist for exact daily-bar enrichment."""
+    if limit <= 0:
+        return []
+    eligible: list[tuple[float, dict]] = []
+    for stock in stocks:
+        name = str(stock.get("name") or "")
+        price = numeric(stock.get("price"))
+        amount = numeric(stock.get("amount"))
+        market_cap = numeric(stock.get("marketCap"))
+        turnover = numeric(stock.get("turnover"))
+        if not price or price <= 0 or name.upper().startswith(("ST", "*ST")) or "退" in name:
+            continue
+        if amount is not None and amount < 2e7:
+            continue
+        liquidity = math.log10(max(amount or 3e7, 1e6)) * 12
+        size = math.log10(max((market_cap or 10) * 1e8, 1e8)) * 4
+        quality = min(max(numeric(stock.get("roe")) or 0, -10), 35) * 0.7
+        momentum = min(max(numeric(stock.get("raw60Return")) or 0, -30), 50) * 0.25
+        activity = min(max(turnover or 0, 0), 12) * 1.1
+        eligible.append((liquidity + size + quality + momentum + activity, stock))
+    eligible.sort(key=lambda x: x[0], reverse=True)
+
+    # Preserve industry breadth instead of allowing one hot sector to occupy the list.
+    chosen: list[dict] = []
+    industry_count: dict[str, int] = {}
+    soft_cap = max(8, limit // 18)
+    for _, stock in eligible:
+        industry = str(stock.get("industry") or "未分类")
+        if industry_count.get(industry, 0) >= soft_cap:
+            continue
+        chosen.append(stock)
+        industry_count[industry] = industry_count.get(industry, 0) + 1
+        if len(chosen) >= limit:
+            return chosen
+    selected_codes = {x["code"] for x in chosen}
+    for _, stock in eligible:
+        if stock["code"] in selected_codes:
+            continue
+        chosen.append(stock)
+        if len(chosen) >= limit:
+            break
+    return chosen
+
+
+def _industry_environment(metrics_by_code: dict[str, dict], stock_by_code: dict[str, dict]) -> tuple[dict[str, dict], float]:
+    ret20_values = [numeric(m.get("ret20")) for m in metrics_by_code.values()]
+    ret20_values = [x for x in ret20_values if x is not None]
+    overall_ret20 = float(pd.Series(ret20_values).median()) if ret20_values else 0.0
+    buckets: dict[str, list[dict]] = {}
+    for code, metrics in metrics_by_code.items():
+        industry = str(stock_by_code.get(code, {}).get("industry") or "未分类")
+        buckets.setdefault(industry, []).append(metrics)
+    output: dict[str, dict] = {}
+    for industry, rows in buckets.items():
+        valid20 = [numeric(x.get("aboveMA20")) for x in rows if numeric(x.get("aboveMA20")) is not None]
+        valid60 = [numeric(x.get("aboveMA60")) for x in rows if numeric(x.get("aboveMA60")) is not None]
+        returns = [numeric(x.get("ret20")) for x in rows if numeric(x.get("ret20")) is not None]
+        breadth20 = sum(x > 0 for x in valid20) / len(valid20) * 100 if valid20 else None
+        breadth60 = sum(x > 0 for x in valid60) / len(valid60) * 100 if valid60 else None
+        median_ret = float(pd.Series(returns).median()) if returns else None
+        components = []
+        if breadth20 is not None:
+            components.append(clip(20 + breadth20 * 0.8, 0, 100))
+        if breadth60 is not None:
+            components.append(clip(20 + breadth60 * 0.8, 0, 100))
+        if median_ret is not None:
+            components.append(clip(50 + (median_ret - overall_ret20) * 3, 0, 100))
+        score = sum(components) / len(components) if components else 50.0
+        output[industry] = {
+            "industryShortScore": round(score, 1),
+            "industryBreadth20": round(breadth20, 1) if breadth20 is not None else None,
+            "industryBreadth60": round(breadth60, 1) if breadth60 is not None else None,
+            "industryMedianRet20": round(median_ret, 2) if median_ret is not None else None,
+        }
+    return output, overall_ret20
+
+
+def enrich_short_history(stocks: list[dict], updated_at: str) -> tuple[int, float, str, dict[str, pd.DataFrame], pd.DataFrame]:
+    candidates = short_history_candidates(stocks, SHORT_HISTORY_LIMIT)
+    if not candidates:
+        return 0, 50.0, "未启用短线日K补全", {}, pd.DataFrame()
+    end = datetime.now().strftime("%Y%m%d")
+    start = (datetime.now() - timedelta(days=SHORT_HISTORY_CALENDAR_DAYS)).strftime("%Y%m%d")
+    market_frame, market_source = fetch_market_history(start, end)
+    market_score, market_meta = market_environment_score(market_frame)
+    log(f"short history candidates: {len(candidates)}; market={market_source} score={market_score}")
+    histories: dict[str, pd.DataFrame] = {}
+    metrics_by_code: dict[str, dict] = {}
+    source_by_code: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=max(1, SHORT_HISTORY_WORKERS)) as executor:
+        futures = {executor.submit(fetch_stock_history, stock, start, end): stock["code"] for stock in candidates}
+        for index, future in enumerate(as_completed(futures), 1):
+            code = futures[future]
+            try:
+                result_code, frame, label = future.result()
+                if frame is not None and not frame.empty:
+                    histories[result_code] = frame
+                    metrics_by_code[result_code] = latest_short_metrics(frame)
+                    source_by_code[result_code] = label or "日K"
+                else:
+                    errors[result_code] = label or "日K未取得"
+            except Exception as exc:
+                errors[code] = str(exc)
+            if index % 25 == 0:
+                log(f"short history progress: {index}/{len(candidates)}, valid={len(histories)}")
+    stock_by_code = {x["code"]: x for x in stocks}
+    industry_meta, overall_ret20 = _industry_environment(metrics_by_code, stock_by_code)
+    for code, metrics in metrics_by_code.items():
+        stock = stock_by_code[code]
+        industry = str(stock.get("industry") or "未分类")
+        ind = industry_meta.get(industry, {"industryShortScore": 50.0})
+        metrics.update(ind)
+        metrics["relativeStrength20"] = None if numeric(metrics.get("ret20")) is None else round(numeric(metrics.get("ret20")) - overall_ret20, 2)
+        metrics["marketShortScore"] = market_score
+        metrics["marketTrendLabel"] = market_meta.get("marketTrendLabel", "市场数据不足")
+        metrics["shortHistorySource"] = source_by_code.get(code, "日K")
+        metrics["shortDataDate"] = metrics.get("historyEnd") or updated_at
+        metrics["eventRiskCoverage"] = 0
+        metrics["eventRiskNote"] = "尚未自动覆盖公告、减持、解禁、停复牌与业绩披露窗口"
+        metrics.update(score_short_metrics(metrics, market_score, ind.get("industryShortScore", 50.0)))
+        stock.update({k: v for k, v in metrics.items() if v is not None})
+        stock["trendDataLevel"] = "精确日K"
+        # Keep long-term trend inputs compatible, but now use exact bars for enriched stocks.
+        stock["aboveMA60"] = metrics.get("aboveMA60")
+        stock["aboveMA250"] = metrics.get("aboveMA250")
+        stock["ma60Slope"] = metrics.get("ma60Slope")
+        stock["relativeStrength"] = metrics.get("relativeStrength20")
+    for stock in stocks:
+        if stock["code"] not in metrics_by_code:
+            stock.setdefault("shortDataLevel", "未补充日K")
+            stock.setdefault("shortDataCoverage", 0)
+            stock.setdefault("shortCoverage", 0)
+            stock.setdefault("shortDecision", "短线数据未覆盖")
+            stock.setdefault("shortGroup", "data")
+            stock.setdefault("shortAction", "该股票未进入日K补全池，不能用当前页面做短线判断。")
+            stock.setdefault("eventRiskCoverage", 0)
+            stock.setdefault("eventRiskNote", "尚未自动覆盖公告、减持、解禁、停复牌与业绩披露窗口")
+            stock.setdefault("trendDataLevel", "行情快照趋势代理")
+            if stock["code"] in errors:
+                stock["shortHistoryError"] = errors[stock["code"]]
+    return len(histories), market_score, market_source, histories, market_frame
+
+
+def dividend_candidates(stocks: list[dict], limit: int) -> list[dict]:
+    missing = [x for x in stocks if numeric(x.get("dividendYield")) is None and numeric(x.get("price")) not in (None, 0)]
+    missing.sort(key=lambda x: (numeric(x.get("marketCap")) or 0, numeric(x.get("amount")) or 0), reverse=True)
+    return missing[:max(0, limit)]
+
+
+def supplement_dividends(stocks: list[dict]) -> int:
+    candidates = dividend_candidates(stocks, DIVIDEND_DETAIL_LIMIT)
+    if not candidates:
+        return 0
+    log(f"general dividend enrichment candidates: {len(candidates)}")
+    updates: dict[str, tuple[float | None, str]] = {}
+    with ThreadPoolExecutor(max_workers=max(1, DIVIDEND_DETAIL_WORKERS)) as executor:
+        futures = {executor.submit(financial_dividend_yield, stock): stock["code"] for stock in candidates}
+        for index, future in enumerate(as_completed(futures), 1):
+            code = futures[future]
+            try:
+                updates[code] = future.result()
+            except Exception as exc:
+                updates[code] = (None, f"股息率补全失败：{exc}")
+            if index % 30 == 0:
+                log(f"dividend enrichment progress: {index}/{len(candidates)}")
+    count = 0
+    stock_by_code = {x["code"]: x for x in stocks}
+    for code, (value, method) in updates.items():
+        stock = stock_by_code.get(code)
+        if not stock:
+            continue
+        stock["dividendYieldMethod"] = method
+        if value is not None:
+            stock["dividendYield"] = value
+            count += 1
+    return count
+
+
 def build() -> dict:
     now = datetime.now()
     spot, spot_source = fetch_spot_snapshot()
@@ -608,6 +926,9 @@ def build() -> dict:
     profit_history = annual_history_by_code(a_reports, ["净利润-净利润", "净利润"])
     ocf_history = annual_history_by_code(a_cashflows, ["经营性现金流-现金流量净额", "经营活动产生的现金流量净额"])
     investing_history = annual_history_by_code(a_cashflows, ["投资性现金流-现金流量净额", "投资活动产生的现金流量净额"])
+    receivable_history = annual_history_by_code(a_balances, ["应收账款", "应收票据及应收账款", "应收款项"])
+    inventory_history = annual_history_by_code(a_balances, ["存货"])
+    share_history = annual_history_by_code(a_reports, ["总股本", "总股本-总股本"])
 
     annual_report_maps = {date: dict_by_code(frame) for date, frame in a_reports.items()}
     annual_cash_maps = {date: dict_by_code(frame) for date, frame in a_cashflows.items()}
@@ -641,6 +962,8 @@ def build() -> dict:
         turnover = numeric(q.get("换手率"))
         market_cap_yuan = numeric(q.get("总市值"))
         market_cap = market_cap_yuan / 1e8 if market_cap_yuan is not None else None
+        amount = numeric(q.get("成交额"))
+        volume = numeric(q.get("成交量"))
         price = numeric(q.get("最新价"))
         # 新浪快照没有 PE/PB。PB 可由最新每股净资产计算；PE 采用最近完整
         # 年度每股收益计算静态 PE，并在数据说明中明确口径。
@@ -685,6 +1008,19 @@ def build() -> dict:
             fcf_method = "代理：经营现金流+投资现金流净额"
             cash_level = "估算"
 
+        revenue_cagr3 = cagr_from_history(revenue_history.get(code, []), 3)
+        profit_cagr3 = cagr_from_history(profit_history.get(code, []), 3)
+        receivable_cagr3 = None if financial else cagr_from_history(receivable_history.get(code, []), 3)
+        inventory_cagr3 = None if financial else cagr_from_history(inventory_history.get(code, []), 3)
+        share_items = share_history.get(code, [])
+        share_dilution = None
+        if not financial and len(share_items) >= 2:
+            first_share, last_share = numeric(share_items[0][1]), numeric(share_items[-1][1])
+            if first_share not in (None, 0) and last_share is not None:
+                share_dilution = (last_share / first_share - 1) * 100
+        receivable_risk = None if receivable_cagr3 is None or revenue_cagr3 is None else receivable_cagr3 - revenue_cagr3
+        inventory_risk = None if inventory_cagr3 is None or revenue_cagr3 is None else inventory_cagr3 - revenue_cagr3
+
         stocks.append({
             "code": code,
             "name": str(q.get("名称") or report.get("股票简称") or ""),
@@ -712,6 +1048,9 @@ def build() -> dict:
             "price": price,
             "pctChange": pct,
             "marketCap": market_cap,
+            "amount": amount,
+            "volume": volume,
+            "volumeRatio": volume_ratio,
             "turnover": turnover,
             "reportDate": str(report_date or ""),
             "dataDate": updated_at,
@@ -735,8 +1074,8 @@ def build() -> dict:
             "fcfPositiveYears3": sum(v is not None and v > 0 for v in annual_fcf_values),
             "ocfTrend3": trend_from_values([v for v in annual_ocf_values if v is not None]),
             "fcfTrend3": trend_from_values([v for v in annual_fcf_values if v is not None]),
-            "revenueCagr3": cagr_from_history(revenue_history.get(code, []), 3),
-            "profitCagr3": cagr_from_history(profit_history.get(code, []), 3),
+            "revenueCagr3": revenue_cagr3,
+            "profitCagr3": profit_cagr3,
             "revenueGrowthQ": first_number(report, ["营业总收入-同比增长", "营业收入-同比增长"]),
             "profitGrowthQ": first_number(report, ["净利润-同比增长", "净利润同比"]),
             "epsRevision": None,
@@ -745,6 +1084,7 @@ def build() -> dict:
             "pb": numeric(q.get("市净率")) if numeric(q.get("市净率")) is not None else derived_pb,
             "pbMethod": "行情PB" if numeric(q.get("市净率")) is not None else ("股价/最新每股净资产" if derived_pb is not None else "暂无"),
             "dividendYield": numeric(first_present(q, ["股息率", "股息率(TTM)"])),
+            "dividendYieldMethod": "全市场行情股息率" if numeric(first_present(q, ["股息率", "股息率(TTM)"])) is not None else ("待金融专项补全" if financial else "行情源未提供"),
             "aboveMA60": None if ret60 is None else int(ret60 > 0),
             "ma60Slope": None if ret60 is None else clip(ret60 / 6.0, -5.0, 5.0),
             "aboveMA250": None if ytd is None else int(ytd > 0),
@@ -755,12 +1095,18 @@ def build() -> dict:
             "predictability": 3,
             "understandable": 3,
             "capitalAllocation": 3,
-            "receivableRisk": None,
-            "inventoryRisk": None,
-            "dilution": None,
+            "receivableRisk": receivable_risk,
+            "inventoryRisk": inventory_risk,
+            "dilution": share_dilution,
+            "receivableRiskMethod": "应收账款3年CAGR减营收3年CAGR" if receivable_risk is not None else "未取得连续年度应收账款",
+            "inventoryRiskMethod": "存货3年CAGR减营收3年CAGR" if inventory_risk is not None else "未取得连续年度存货",
+            "dilutionMethod": "年度总股本首尾变化" if share_dilution is not None else "未取得连续年度总股本",
             "ocfPositive": None if ocf is None else int(ocf > 0),
             "raw60Return": ret60,
             "ytdReturn": ytd,
+            "trendDataLevel": "行情快照趋势代理",
+            "eventRiskCoverage": 0,
+            "eventRiskNote": "尚未自动覆盖公告、减持、解禁、停复牌与业绩披露窗口",
             "pcf": None,
         })
 
@@ -791,6 +1137,7 @@ def build() -> dict:
                 stock.update({k: v for k, v in updates[stock["code"]].items() if v is not None or k.endswith("Method") or k == "cashFlowDataLevel"})
 
     financial_candidates = [x for x in stocks if is_financial(x.get("industry", ""))]
+    financial_candidates.sort(key=lambda x: (0 if financial_type(x.get("industry", "")) == "diversified" else 1, numeric(x.get("marketCap")) or 0), reverse=True)
     if FINANCIAL_DETAIL_LIMIT > 0:
         financial_candidates = financial_candidates[:FINANCIAL_DETAIL_LIMIT]
         log(f"financial industry enrichment candidates: {len(financial_candidates)}")
@@ -809,14 +1156,32 @@ def build() -> dict:
         for stock in stocks:
             if stock["code"] in financial_updates:
                 update = financial_updates[stock["code"]]
-                stock.update({k: v for k, v in update.items() if v is not None or k in {"financialType", "financialMetricLevel", "financialMetricMethod"}})
+                stock.update({k: v for k, v in update.items() if v is not None or k in {"financialType", "financialMetricLevel", "financialMetricMethod", "dividendYieldMethod"}})
+
+    dividend_supplemented = supplement_dividends(stocks) if DIVIDEND_DETAIL_LIMIT > 0 else 0
+
+    short_history_count, market_short_score, market_history_source, short_histories, market_history = enrich_short_history(stocks, updated_at)
+    if short_histories:
+        try:
+            SHORT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            with SHORT_CACHE.open("wb") as handle:
+                pickle.dump({
+                    "createdAt": updated_at,
+                    "marketSource": market_history_source,
+                    "market": market_history,
+                    "stocks": short_histories,
+                    "stockMeta": {x["code"]: {"name": x.get("name"), "industry": x.get("industry")} for x in stocks if x["code"] in short_histories},
+                }, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            log(f"temporary short history cache written: {SHORT_CACHE}")
+        except Exception as exc:
+            log(f"short history cache skipped: {exc}")
 
     financial_count = sum(is_financial(x.get("industry", "")) for x in stocks)
     financial_special_count = sum(x.get("financialMetricLevel") in {"专项", "部分专项"} for x in stocks)
     roic_count = sum(numeric(x.get("roic")) is not None for x in stocks)
     fcf_count = sum(numeric(x.get("fcfYield")) is not None for x in stocks)
     return {
-        "schemaVersion": 4,
+        "schemaVersion": 7,
         "updatedAt": updated_at,
         "tradeDate": trade_date,
         "source": f"AKShare公开接口（{spot_source}；GitHub后台整理，无需数据Token）",
@@ -828,14 +1193,26 @@ def build() -> dict:
             "exactCashFlow": exact_count,
             "financialStocks": financial_count,
             "financialSpecialMetrics": financial_special_count,
+            "dividendYield": sum(numeric(x.get("dividendYield")) is not None for x in stocks),
+            "dividendSupplemented": dividend_supplemented,
+            "shortHistoryFetched": short_history_count,
+            "shortExact250Bars": sum(x.get("shortDataLevel") == "精确日K" for x in stocks),
+            "shortScored": sum(numeric(x.get("shortScore")) is not None for x in stocks),
+            "eventRisk": 0,
+            "epsRevision": sum(numeric(x.get("epsRevision")) is not None for x in stocks),
+            "receivableRisk": sum(numeric(x.get("receivableRisk")) is not None for x in stocks),
+            "inventoryRisk": sum(numeric(x.get("inventoryRisk")) is not None for x in stocks),
+            "dilution": sum(numeric(x.get("dilution")) is not None for x in stocks),
         },
         "notes": [
-            f"行情入口：{spot_source}。东财 push2 拒绝 GitHub 服务器时自动切换新浪；新浪缺失的估值字段从财报计算或留空，不伪造。",
+            f"行情入口：{spot_source}。股息率优先使用全市场行情；缺失时对高流动性候选及金融股使用雪球TTM或最近已实施分红方案补全。",
             "ROIC为计算指标：全市场采用经营投入资本估算口径，优先候选在完整报表可用时采用权益+有息负债-现金口径。",
-            "自由现金流：优先候选采用经营现金流减资本开支；其余非金融股采用经营现金流加投资现金流净额的保守代理，并在网页明确标注口径。",
+            "自由现金流：优先候选采用经营现金流减资本开支；其余非金融股采用经营现金流加投资现金流净额的代理，并在网页明确标注口径。",
             "银行、保险、券商自动切换行业模型；专项监管指标由F10主要指标接口尽力补充，接口缺失时只给基础判断，不伪造。",
-            "三年现金流趋势采用最近三个完整年度；单位数组为亿元。",
-            "均线字段仍使用60日涨幅和年初至今涨幅作为趋势代理。",
+            f"短线模块仅对约{SHORT_HISTORY_LIMIT}只高流动性、分行业候选补取前复权日K；市场日K来源：{market_history_source}，当前市场环境分：{market_short_score}。",
+            "短线信号使用真实MA、RSI、MACD、ATR、突破及量价结构，并与长期价值判断完全分开；未进入日K补全池的股票不得据此做短线结论。",
+            "短线模块尚未自动覆盖公告、减持、解禁、停复牌和财报披露窗口；页面会明确显示事件风险未覆盖。",
+            "盈利预测调整、应收/存货异常和股本稀释仍可能缺失，缺失字段不应被当作利好。",
         ],
         "stocks": stocks,
     }
