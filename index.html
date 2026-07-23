@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>大A智能选股｜ROIC × 自由现金流 × 巴菲特芒格框架</title>
-  <meta name="description" content="融合巴菲特与芒格的质量投资框架、财务趋势、估值和价格趋势的本地智能选股网页。" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <title>大A价值选股助手｜买入判断版</title>
+  <meta name="description" content="根据企业质量、成长、估值、现金流、趋势与数据可信度，对A股进行初筛并给出规则化买入判断。" />
   <style>
     :root{
       --bg:#f4f7fb; --panel:#ffffff; --ink:#162033; --muted:#667085;
@@ -80,78 +79,103 @@
     .footer{font-size:12px;color:var(--muted);line-height:1.7;padding:16px 4px 4px}
     @media(max-width:1050px){.grid{grid-template-columns:1fr}.sidebar{position:static;max-height:none}.stats{grid-template-columns:repeat(2,1fr)}.detail-grid{grid-template-columns:1fr}}
     @media(max-width:620px){.shell{padding:10px}.hero{padding:20px;border-radius:18px}.stats{grid-template-columns:1fr 1fr}.search{min-width:100%;width:100%}.editor{grid-template-columns:1fr}.editor .wide{grid-column:span 1}.toolbar-left,.toolbar-right{width:100%}.btn{flex:1}.pagination{align-items:flex-start}.page-controls,.page-size{width:100%}.pagination .btn{flex:0 0 auto}}
+
+    /* 精简买入判断版 */
+    .hero{padding:24px 26px}.hero h1{font-size:clamp(25px,3.6vw,38px)}.hero p{max-width:820px}
+    .grid{grid-template-columns:300px minmax(0,1fr)}
+    .hidden-tools{display:none!important}
+    .strategy-hint{padding:10px 12px;border-radius:11px;background:#f0f5ff;color:#31558b;font-size:12px;line-height:1.6;margin:-3px 0 12px}
+    details.advanced{border:1px solid var(--line);border-radius:12px;background:#fbfcfe;overflow:hidden}
+    details.advanced summary{cursor:pointer;padding:12px 13px;font-weight:800;list-style:none;display:flex;justify-content:space-between;align-items:center}
+    details.advanced summary::-webkit-details-marker{display:none}
+    details.advanced summary:after{content:'展开';font-size:11px;color:var(--muted);font-weight:600}
+    details.advanced[open] summary:after{content:'收起'}
+    .advanced-body{padding:0 13px 13px;border-top:1px solid var(--line);padding-top:13px}
+    .stats{grid-template-columns:repeat(4,minmax(140px,1fr))}
+    .decision-pill{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-weight:900;font-size:11px;white-space:nowrap}
+    .decision-buy{background:#dcf7ea;color:#08764f}.decision-wait{background:#fff1d7;color:#9a5a00}.decision-data{background:#edf1f7;color:#526078}.decision-avoid{background:#ffe5e5;color:#aa2e2e}.decision-special{background:#eee8ff;color:#6541b8}.decision-watch{background:#e7f0ff;color:#2254b0}
+    .readiness{font-size:12px;color:var(--muted);margin-top:5px}.readiness b{color:var(--ink)}
+    .buy-card{border-radius:16px;padding:18px;border:1px solid var(--line);margin-bottom:16px}
+    .buy-card.decision-buy{background:linear-gradient(135deg,#e8fbf2,#f6fffb)}
+    .buy-card.decision-wait{background:linear-gradient(135deg,#fff5e2,#fffaf1)}
+    .buy-card.decision-data{background:linear-gradient(135deg,#f2f5f9,#fbfcfe)}
+    .buy-card.decision-avoid{background:linear-gradient(135deg,#fff0f0,#fff8f8)}
+    .buy-card.decision-special{background:linear-gradient(135deg,#f3efff,#fbfaff)}
+    .buy-card.decision-watch{background:linear-gradient(135deg,#edf4ff,#f8fbff)}
+    .buy-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.buy-head h3{margin:0;font-size:20px}.buy-score{font-size:13px;font-weight:800}
+    .buy-action{margin-top:10px;line-height:1.7;font-size:14px}.buy-reasons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .mini-card{padding:11px 12px;border-radius:11px;background:rgba(255,255,255,.72);border:1px solid rgba(120,140,170,.16);font-size:12px;line-height:1.6}
+    .key-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.key-item{border:1px solid #edf1f6;border-radius:10px;padding:10px}.key-item span{display:block;font-size:11px;color:var(--muted)}.key-item b{display:block;margin-top:4px;font-size:15px}
+    .compact-note{padding:10px 12px;border-radius:10px;background:#fff8e8;color:#7b5406;font-size:11px;line-height:1.6}
+    .toolbar select,.toolbar input{border:1px solid #ccd5e3;border-radius:10px;padding:10px 11px;background:#fff;color:var(--ink)}
+    table{min-width:1050px}.reason{max-width:330px}
+    #editModal{display:none!important}
+    @media(max-width:720px){.stats{grid-template-columns:1fr 1fr}.buy-reasons,.key-grid{grid-template-columns:1fr}.hero-tags{display:none}.sidebar{padding:14px}.hero p{font-size:13px}.toolbar .btn{flex:0 0 auto}.table-wrap{max-height:none}}
   </style>
 </head>
 <body>
   <div class="shell">
     <section class="hero">
-      <h1>大A智能选股台</h1>
-      <p>把“好生意、好管理、好价格”与财务趋势、盈利预期、价格趋势结合。不是寻找最低PE，而是筛选能长期创造现金、具有护城河、估值合理且趋势开始验证的企业。</p>
-      <div class="hero-tags"><span class="hero-tag">巴菲特：优质企业 + 合理价格</span><span class="hero-tag">芒格：能力圈 + 护城河 + 管理层</span><span class="hero-tag">趋势验证：业绩 + 预期 + 价格</span><span class="hero-tag">无 Token 自动更新</span><span class="hero-tag">ROIC + 自由现金流</span></div>
+      <h1>大A价值选股助手</h1>
+      <p>先判断企业质量和现金流，再判断价格是否合理、趋势是否确认。页面给出的“能不能买”是规则化研究结论，用于缩小范围，不替代年报核查与个人投资决策。</p>
+      <div class="hero-tags"><span class="hero-tag">质量优先</span><span class="hero-tag">估值留安全边际</span><span class="hero-tag">数据不足不下结论</span><span class="hero-tag">买入判断可解释</span></div>
     </section>
 
     <div class="grid">
       <aside class="panel sidebar">
-        <div class="section-title">评分权重 <span class="small muted" id="weightTotal">合计 100%</span></div>
-        <div class="field"><label>企业质量 <span id="wQualityText">28%</span></label><input id="wQuality" type="range" min="0" max="50" value="28"></div>
-        <div class="field"><label>成长与业绩趋势 <span id="wGrowthText">22%</span></label><input id="wGrowth" type="range" min="0" max="50" value="22"></div>
-        <div class="field"><label>估值安全边际 <span id="wValueText">20%</span></label><input id="wValue" type="range" min="0" max="50" value="20"></div>
-        <div class="field"><label>价格趋势验证 <span id="wTrendText">15%</span></label><input id="wTrend" type="range" min="0" max="40" value="15"></div>
-        <div class="field"><label>芒格式主观判断 <span id="wMungerText">15%</span></label><input id="wMunger" type="range" min="0" max="40" value="15"></div>
+        <div class="section-title">选股策略</div>
+        <div class="field"><select id="mode"><option value="balanced">均衡复利</option><option value="buffett">质量优先</option><option value="reversal">低估反转</option><option value="trend">趋势成长</option><option value="dividend">稳健高股息</option></select></div>
+        <div class="strategy-hint" id="modeHint">质量、成长和估值相对均衡，适合多数长期投资者做第一轮筛选。</div>
+        <div class="btnrow"><button class="btn primary" id="applyBtn">应用策略</button><button class="btn ghost" id="resetBtn">恢复默认</button></div>
 
-        <div class="group">
-          <div class="section-title">硬性筛选</div>
-          <div class="field"><label>最低ROE（%）</label><input id="minRoe" type="number" value="10" step="1"></div>
-          <div class="field"><label>最低ROIC（%，0=不限）</label><input id="minRoic" type="number" value="0" step="1"></div>
-          <div class="field"><label>最低自由现金流收益率（%，-99=不限）</label><input id="minFcfYield" type="number" value="-99" step="0.5"></div>
-          <div class="field"><label>近3年经营现金流为正至少</label><select id="minOcfYears"><option value="0">不限</option><option value="1">1年</option><option value="2" selected>2年</option><option value="3">3年</option></select></div>
-          <div class="field"><label>最高资产负债率（%）</label><input id="maxDebt" type="number" value="70" step="1"></div>
-          <div class="field"><label>最高PE（倍，0=不限）</label><input id="maxPe" type="number" value="60" step="1"></div>
-          <div class="field"><label>最低总市值（亿元）</label><input id="minMarketCap" type="number" value="0" step="10"></div>
-          <div class="checks">
-            <label class="check"><input id="requirePositiveOCF" type="checkbox" checked>经营现金流必须为正</label>
-            <label class="check"><input id="requireExactCash" type="checkbox">只看精确ROIC/自由现金流候选</label>
-            <label class="check"><input id="requireProfitGrowth" type="checkbox">最新利润增速必须为正</label>
-            <label class="check"><input id="requireAboveMA60" type="checkbox">股价必须站上60日线</label>
-          </div>
+        <div class="hidden-tools">
+          <span id="weightTotal"></span><span id="wQualityText"></span><span id="wGrowthText"></span><span id="wValueText"></span><span id="wTrendText"></span><span id="wMungerText"></span>
+          <input id="wQuality" type="range" value="35"><input id="wGrowth" type="range" value="25"><input id="wValue" type="range" value="25"><input id="wTrend" type="range" value="10"><input id="wMunger" type="range" value="5">
         </div>
 
         <div class="group">
-          <div class="section-title">评分模式</div>
-          <div class="field"><select id="mode"><option value="balanced">均衡复利</option><option value="buffett">巴菲特质量优先</option><option value="reversal">低估反转</option><option value="trend">趋势成长</option><option value="dividend">稳健高股息</option></select></div>
-          <div class="btnrow"><button class="btn primary" id="applyBtn">重新评分</button><button class="btn ghost" id="resetBtn">恢复默认</button></div>
-        </div>
-
-        <div class="group">
-          <div class="section-title">大A自动数据</div>
+          <div class="section-title">数据设置</div>
           <div class="checks">
-            <label class="check"><input id="autoSyncOnOpen" type="checkbox" checked>打开网页自动读取云端数据（6小时检查一次）</label>
-            <label class="check"><input id="excludeST" type="checkbox" checked>读取数据时排除ST/*ST/退市股</label>
+            <label class="check"><input id="autoSyncOnOpen" type="checkbox" checked>打开网页自动读取最新云端数据</label>
+            <label class="check"><input id="excludeST" type="checkbox" checked>排除ST、退市整理股票</label>
             <label class="check"><input id="includeBJ" type="checkbox" checked>包含北交所</label>
           </div>
-          <div class="field" style="margin-top:12px">
-            <label>同步速度 <span class="muted small">默认低速最稳定</span></label>
-            <select id="syncSpeed">
-              <option value="slow" selected>低速稳定（约2秒/页，自动换接口）</option>
-              <option value="normal">普通速度（约0.8秒/页）</option>
-            </select>
-          </div>
-          <label class="check" style="display:none"><input id="retryFailedPages" type="checkbox" checked>后台失败重试</label>
-          <div class="btnrow" style="margin-top:12px"><button class="btn primary" id="syncABtn">读取最新大A数据</button><button class="btn ghost" id="clearAutoBtn">清除自动数据</button></div>
+          <select id="syncSpeed" class="hidden-tools"><option value="slow" selected>slow</option></select>
+          <label class="hidden-tools"><input id="retryFailedPages" type="checkbox" checked></label>
+          <button class="hidden-tools" id="syncABtn">读取数据</button><button class="hidden-tools" id="clearAutoBtn">清除</button>
         </div>
 
-        <div class="group note">
-          评分仅用于缩小研究范围，不构成投资建议。全部非金融股会自动计算ROIC、自由现金流收益率和三年现金流趋势；优先候选使用完整报表精算，其余股票使用明确标注的估算口径。金融股不强行套用工业企业ROIC/FCF公式。
+        <div class="group">
+          <details class="advanced">
+            <summary>高级筛选条件</summary>
+            <div class="advanced-body">
+              <div class="field"><label>最低核心数据覆盖率（%）</label><input id="minCoreCoverage" type="number" value="55" min="0" max="100" step="5"></div>
+              <div class="field"><label>最低ROE（%）</label><input id="minRoe" type="number" value="8" step="1"></div>
+              <div class="field"><label>最低ROIC（%，0=不限）</label><input id="minRoic" type="number" value="0" step="1"></div>
+              <div class="field"><label>最低自由现金流收益率（%，-99=不限）</label><input id="minFcfYield" type="number" value="-99" step="0.5"></div>
+              <div class="field"><label>最高资产负债率（%）</label><input id="maxDebt" type="number" value="80" step="1"></div>
+              <div class="field"><label>最高PE（倍，0=不限）</label><input id="maxPe" type="number" value="0" step="1"></div>
+              <div class="field"><label>最低总市值（亿元）</label><input id="minMarketCap" type="number" value="0" step="10"></div>
+              <div class="field"><label>近3年经营现金流为正至少</label><select id="minOcfYears"><option value="0" selected>不限</option><option value="1">1年</option><option value="2">2年</option><option value="3">3年</option></select></div>
+              <div class="checks">
+                <label class="check"><input id="requirePositiveOCF" type="checkbox">最新经营现金流必须为正</label>
+                <label class="check"><input id="requireExactCash" type="checkbox">只看精确现金流候选</label>
+                <label class="check"><input id="requireProfitGrowth" type="checkbox">最新利润增速必须为正</label>
+                <label class="check"><input id="requireAboveMA60" type="checkbox">股价必须站上60日线</label>
+              </div>
+            </div>
+          </details>
         </div>
+
+        <div class="group compact-note">“可分批关注”必须同时满足：数据覆盖较充分、质量合格、估值不过分、基本面没有明显恶化、趋势至少不弱。其余股票会明确提示等待什么条件。</div>
       </aside>
 
       <main class="main">
         <div class="stats">
-          <div class="panel stat"><div class="k">股票数量</div><div class="v" id="statCount">0</div><div class="sub">当前数据集</div></div>
-          <div class="panel stat"><div class="k">通过硬筛选</div><div class="v" id="statPassed">0</div><div class="sub">满足最低条件</div></div>
-          <div class="panel stat"><div class="k">A级候选</div><div class="v" id="statA">0</div><div class="sub">综合评分 ≥ 80</div></div>
-          <div class="panel stat"><div class="k">平均综合分</div><div class="v" id="statAvg">0</div><div class="sub">仅统计通过筛选</div></div>
-          <div class="panel stat"><div class="k">低估反转候选</div><div class="v" id="statReversal">0</div><div class="sub">估值≥65 且趋势改善</div></div>
+          <div class="panel stat"><div class="k">股票总数</div><div class="v" id="statCount">0</div><div class="sub">当前数据集</div></div>
+          <div class="panel stat"><div class="k">可分批关注</div><div class="v" id="statBuy">0</div><div class="sub">质量、估值与可信度达标</div></div>
+          <div class="panel stat"><div class="k">等待条件</div><div class="v" id="statWait">0</div><div class="sub">等待价格、业绩或趋势</div></div>
+          <div class="panel stat"><div class="k">暂不考虑/数据不足</div><div class="v" id="statAvoid">0</div><div class="sub">存在硬伤或无法可靠判断</div></div>
         </div>
 
         <section class="panel">
@@ -163,22 +187,20 @@
           <div class="toolbar">
             <div class="toolbar-left">
               <input class="search" id="search" placeholder="搜索代码、名称或行业">
-              <select id="gradeFilter"><option value="all">全部评级</option><option value="A">A级</option><option value="B">B级</option><option value="C">C级</option><option value="D">D级/未通过</option></select>
+              <select id="buyFilter"><option value="all">全部买入判断</option><option value="buy">可分批关注</option><option value="wait">等待条件</option><option value="data">数据不足</option><option value="avoid">暂不考虑</option><option value="special">行业模型不适用</option></select>
               <select id="industryFilter"><option value="all">全部行业</option></select>
             </div>
             <div class="toolbar-right">
-              <button class="btn primary" id="syncATopBtn">读取最新大A数据</button>
-              <label class="btn ghost file-label">导入Excel/CSV<input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></label>
-              <button class="btn ghost" id="downloadTemplate">下载模板</button>
-              <button class="btn good" id="exportBtn">导出筛选结果</button>
-              <button class="btn primary" id="addBtn">新增股票</button>
+              <button class="btn primary" id="syncATopBtn">更新数据</button>
+              <button class="btn good" id="exportBtn">导出当前结果</button>
             </div>
+            <div class="hidden-tools"><select id="gradeFilter"><option value="all">全部</option></select><select id="statusFilter"><option value="all">全部</option></select><input type="file" id="fileInput"><button id="downloadTemplate"></button><button id="addBtn"></button></div>
           </div>
           <div class="toolbar" style="padding-top:0"><div class="small muted" id="visibleInfo"></div></div>
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th data-sort="rank">排名</th><th data-sort="name">股票</th><th data-sort="industry">行业</th><th data-sort="score">综合分</th><th>评级</th><th data-sort="quality">质量</th><th data-sort="growth">成长</th><th data-sort="value">估值</th><th data-sort="trend">趋势</th><th data-sort="munger">芒格项</th><th>核心判断</th><th>操作</th>
+                <th>排名</th><th data-sort="name">股票</th><th data-sort="industry">行业</th><th data-sort="buyReadiness">买入判断</th><th data-sort="score">可信分</th><th data-sort="quality">质量</th><th data-sort="growth">成长</th><th data-sort="value">估值</th><th data-sort="trend">趋势</th><th>关键原因</th><th>详情</th>
               </tr></thead>
               <tbody id="tbody"></tbody>
             </table>
@@ -189,7 +211,7 @@
             <div class="page-controls"><button class="btn ghost small" id="firstPage">首页</button><button class="btn ghost small" id="prevPage">上一页</button><span class="small" id="pageInfo">第 1 / 1 页</span><input id="pageJump" type="number" min="1" value="1" aria-label="跳转页码"><button class="btn ghost small" id="goPage">跳转</button><button class="btn ghost small" id="nextPage">下一页</button><button class="btn ghost small" id="lastPage">末页</button></div>
           </div>
         </section>
-        <div class="footer">数据说明：网页读取GitHub后台整理的一份全A股JSON。ROIC为计算指标；自由现金流优先采用“经营现金流－资本开支”，未取得完整明细时采用“经营现金流＋投资现金流净额”的保守代理，并逐股显示口径。自动指标适合初筛，年报核查、行业口径、管理层与护城河判断仍需人工完成。</div>
+        <div class="footer">说明：买入判断基于财务、估值、趋势及数据覆盖率的固定规则，仅用于研究排序。金融股、周期股和财报异常企业需要使用行业专用方法；任何结论都应结合最新公告、年报和个人风险承受能力复核。</div>
       </main>
     </div>
   </div>
@@ -218,6 +240,7 @@ const samples = [
 ];
 
 const PACK_KEYS=[...new Set([...FIELDS.map(x=>x[0]),'price','pctChange','marketCap','turnover','reportDate','dataDate','dataSource','autoData','raw60Return','ytdReturn','pcf','operatingCashFlow','freeCashFlow','roicMethod','fcfMethod','cashFlowDataLevel','ocfYears3','fcfYears3','detailError'])];
+const CACHE_SCHEMA_VERSION='trusted-financial-v2';
 function packStocks(list){return {v:1,k:PACK_KEYS,d:list.map(s=>PACK_KEYS.map(k=>s[k]??null))};}
 function unpackStocks(p){if(!p||!Array.isArray(p.k)||!Array.isArray(p.d))return null;return p.d.map(row=>{const o={};p.k.forEach((k,i)=>{if(row[i]!==null&&row[i]!==undefined)o[k]=row[i];});return o;});}
 function safeLoad(){
@@ -225,7 +248,7 @@ function safeLoad(){
  try{return JSON.parse(localStorage.getItem('smartStocksV2') || 'null')}catch(e){return null}
 }
 let stocks = safeLoad() || samples;
-let scored = [], sortKey='score', sortDir=-1, editingIndex=null;
+let scored = [], sortKey='buyReadiness', sortDir=-1, editingIndex=null;
 let syncRunning=false, currentPage=1, pageSize=100;
 const AUTO_SOURCE='GitHub自动数据（AKShare）';
 const API_PAGE_SIZE=100;
@@ -249,70 +272,189 @@ function getWeights(){
 }
 
 function applyMode(mode){
- const modes={balanced:[28,22,20,15,15],buffett:[35,18,18,9,20],reversal:[22,25,28,15,10],trend:[20,28,14,28,10],dividend:[28,12,30,10,20]};
+ const modes={balanced:[35,25,25,10,5],buffett:[45,20,20,5,10],reversal:[25,25,35,10,5],trend:[25,30,15,25,5],dividend:[35,15,35,10,5]};
  const a=modes[mode]||modes.balanced; ['wQuality','wGrowth','wValue','wTrend','wMunger'].forEach((id,i)=>$(id).value=a[i]); updateWeightText();
+}
+
+
+function updateModeHint(mode){
+ const hints={balanced:'质量、成长和估值相对均衡，适合多数长期投资者做第一轮筛选。',buffett:'更重视ROE、ROIC、现金流和低负债，允许短期增长与趋势弱一些。',reversal:'更重视估值和业绩拐点，适合寻找被错杀但质量不能太差的公司。',trend:'更重视业绩增长和价格确认，不适合单纯抄底。',dividend:'更重视现金流、估值和股息，适合成熟稳定企业。'};
+ if($('modeHint'))$('modeHint').textContent=hints[mode]||hints.balanced;
 }
 
 function updateWeightText(){
  const ids=['wQuality','wGrowth','wValue','wTrend','wMunger']; ids.forEach(id=>$(id+'Text').textContent=$(id).value+'%'); const t=ids.reduce((s,id)=>s+num($(id).value),0); $('weightTotal').textContent='合计 '+t+'%（自动归一）';
 }
 
+function weightedDimension(items, neutral=50){
+ const total=items.reduce((a,x)=>a+Math.max(0,num(x.weight)),0)||1;
+ let weighted=0,covered=0,rawWeighted=0;
+ items.forEach(x=>{
+  const weight=Math.max(0,num(x.weight));
+  const known=hasNum(x.score);
+  const coverage=known?clamp(hasNum(x.coverage)?num(x.coverage):1,0,1):0;
+  const score=known?clamp(num(x.score)):neutral;
+  weighted+=weight*(score*coverage+neutral*(1-coverage));
+  covered+=weight*coverage;
+  rawWeighted+=weight*coverage*score;
+ });
+ return {score:weighted/total,coverage:covered/total,raw:covered?rawWeighted/covered:neutral};
+}
+function positiveYearsValue(stored, series){
+ if(Array.isArray(series)){
+  const valid=series.filter(hasNum);
+  if(!valid.length)return null;
+  return valid.filter(v=>num(v)>0).length;
+ }
+ return hasNum(stored)?num(stored):null;
+}
+
+function judgeBuy(x){
+ const blocks=[],supports=[];
+ if(x.quality>=70)supports.push('企业质量较好');
+ if(x.value>=65)supports.push('估值有一定安全边际');
+ if(x.growth>=58)supports.push('中长期业绩趋势尚可');
+ if(x.trend>=55)supports.push('价格趋势已有一定确认');
+ if(hasNum(x.ocfToProfit)&&num(x.ocfToProfit)>=.8)supports.push('利润现金含量尚可');
+ if(hasNum(x.fcfYield)&&num(x.fcfYield)>=3)supports.push('自由现金流收益率不低');
+ if(x.quality<60)blocks.push('企业质量分不足');
+ if(x.value<55)blocks.push('估值安全边际不足');
+ if(x.growth<48)blocks.push('业绩趋势偏弱');
+ if(x.trend<45)blocks.push('价格趋势尚未确认');
+ if(hasNum(x.profitGrowthQ)&&num(x.profitGrowthQ)<-10)blocks.push('最新利润仍明显下降');
+ if(hasNum(x.ocfToProfit)&&num(x.ocfToProfit)<.5)blocks.push('利润现金含量偏弱');
+ if(hasNum(x.fcfYield)&&num(x.fcfYield)<0)blocks.push('自由现金流为负');
+ if(hasNum(x.debtRatio)&&num(x.debtRatio)>85)blocks.push('负债率过高');
+ const isFinancial=x.cashFlowDataLevel==='不适用'||/银行|保险|证券|多元金融|金融服务/.test(String(x.industry||''));
+ let dataAge=null;try{const d=new Date(x.dataDate||'');if(!Number.isNaN(d.getTime()))dataAge=(Date.now()-d.getTime())/86400000;}catch(e){}
+ let readiness=clamp(x.quality*.30+x.value*.30+x.growth*.20+x.trend*.15+x.coreCoverage*.05-x.penalty*1.2);
+ const result=(buyGroup,buyDecision,decisionClass,buyAction)=>({buyGroup,buyDecision,decisionClass,buyAction,buyReadiness:Math.round(readiness),buyReason:supports.slice(0,3),buyBlocks:[...new Set(blocks)].slice(0,4)});
+ if(isFinancial){readiness=Math.min(readiness,55);blocks.unshift('通用ROIC和自由现金流模型不适用于金融股');return result('special','另用行业模型','decision-special','不能按本页通用规则直接判断；应改看净息差、不良率、偿付能力或券商周期指标。');}
+ if(dataAge!==null&&dataAge>14){readiness=Math.min(readiness,50);blocks.unshift(`行情数据已超过${Math.floor(dataAge)}天未更新`);return result('data','数据已过期','decision-data','先点击“更新数据”，确认最新价格、估值和公告后再判断。');}
+ if(x.hard&&x.hard.length){readiness=Math.min(readiness,42);blocks.unshift(...x.hard);return result('avoid','暂不考虑','decision-avoid','当前存在硬性不达标项目，先排除，等待基本面或估值条件发生实质变化。');}
+ if(x.coreCoverage<55||x.screenStatus==='pending'){readiness=Math.min(readiness,54);blocks.unshift(`核心数据覆盖仅${x.coreCoverage}%`);return result('data','数据不足','decision-data','暂时无法可靠判断能否买入；先补齐ROE、现金流、成长和估值等核心数据。');}
+ if((hasNum(x.debtRatio)&&num(x.debtRatio)>85)||(hasNum(x.ocfToProfit)&&num(x.ocfToProfit)<.35)||(x.quality<45)){readiness=Math.min(readiness,38);return result('avoid','暂不考虑','decision-avoid','财务质量或偿债安全性存在明显问题，不建议仅因低估值介入。');}
+ if(x.quality>=68&&x.value<55){readiness=Math.min(readiness,66);return result('wait','等待更好价格','decision-wait','公司质量尚可，但当前估值安全边际不足；等待估值回落或盈利上修。');}
+ if(x.quality<60&&x.value>=68){readiness=Math.min(readiness,55);blocks.unshift('便宜不等于优质，存在价值陷阱风险');return result('avoid','便宜但质量一般','decision-avoid','估值看似便宜，但质量分不足，优先排查周期高点、资产减值和盈利不可持续。');}
+ if(x.growth<48||(hasNum(x.profitGrowthQ)&&num(x.profitGrowthQ)<-10)){readiness=Math.min(readiness,64);return result('wait','等待业绩拐点','decision-wait','估值可能已有吸引力，但利润趋势尚未确认，等待收入、利润率或盈利预测转正。');}
+ if(x.trend<45){readiness=Math.min(readiness,66);return result('wait','等待趋势确认','decision-wait','基本面和估值具备一定条件，但市场尚未验证；等待不再创新低或站稳中期趋势。');}
+ if(x.score>=72&&x.quality>=68&&x.value>=60&&x.growth>=50&&x.trend>=48&&x.coreCoverage>=65){return result('buy','可分批关注','decision-buy','已进入规则化买入观察区：适合继续核查年报和估值，确认无重大遗漏后再考虑分批，而不是一次性追高。');}
+ if(x.score>=64&&x.quality>=60&&x.value>=55){readiness=Math.min(readiness,69);return result('wait','继续观察','decision-watch','基础条件尚可，但优势不够集中；等待质量、估值、业绩或趋势中至少一项进一步改善。');}
+ readiness=Math.min(readiness,48);return result('avoid','暂不考虑','decision-avoid','综合条件尚未达到研究优先级，当前没有足够的质量和安全边际支持买入。');
+}
+
 function compute(s){
+ const ocfYears=positiveYearsValue(s.ocfPositiveYears3,s.ocfYears3);
+ const fcfYears=positiveYearsValue(s.fcfPositiveYears3,s.fcfYears3);
+ const cashMetric=weightedDimension([
+  {score:hasNum(s.ocfToProfit)?norm(s.ocfToProfit,.55,1.2):null,weight:5},
+  {score:hasNum(s.ocfTrend3)?norm(s.ocfTrend3,-40,50):null,weight:3},
+  {score:hasNum(ocfYears)?norm(ocfYears,0,3):null,weight:3},
+  {score:hasNum(fcfYears)?norm(fcfYears,0,3):null,weight:2}
+ ],50);
  const qParts={
-  roe:normMaybe(s.roe,6,25), roic:normMaybe(s.roic,5,22), cash:avg([normMaybe(s.ocfToProfit,.45,1.2),normMaybe(s.ocfTrend3,-60,60),normMaybe(s.fcfPositiveYears3,0,3)]), gross:normMaybe(s.grossMargin,15,65), net:normMaybe(s.netMargin,3,25), debt:invNormMaybe(s.debtRatio,20,80)
+  roe:hasNum(s.roe)?norm(s.roe,5,20):null,
+  roic:hasNum(s.roic)?norm(s.roic,5,18):null,
+  gross:hasNum(s.grossMargin)?norm(s.grossMargin,10,55):null,
+  net:hasNum(s.netMargin)?norm(s.netMargin,2,20):null,
+  debt:hasNum(s.debtRatio)?invNorm(s.debtRatio,25,85):null
  };
- const qWeights=[1.2,1.3,1.2,.8,1,1];
- const quality=[qParts.roe,qParts.roic,qParts.cash,qParts.gross,qParts.net,qParts.debt].reduce((z,v,i)=>z+v*qWeights[i],0)/qWeights.reduce((a,b)=>a+b,0);
- const growth=avg([normMaybe(s.revenueCagr3,-5,20),normMaybe(s.profitCagr3,-10,25),normMaybe(s.revenueGrowthQ,-15,25),normMaybe(s.profitGrowthQ,-25,30),normMaybe(s.epsRevision,-15,12)]);
- const peScore=!hasNum(s.pe)?40:(num(s.pe)<=0?8:invNorm(s.pe,10,55));
- const pbRoe = hasNum(s.pb) && num(s.pb)>0 && hasNum(s.roe) && num(s.roe)>0 ? norm((num(s.roe)/num(s.pb)),2,8) : 45;
- const value=avg([peScore,pbRoe,normMaybe(s.fcfYield,0,8),normMaybe(s.dividendYield,0,6)]);
- const trend=avg([hasNum(s.aboveMA60)?(num(s.aboveMA60)?75:25):50,normMaybe(s.ma60Slope,-5,5),hasNum(s.aboveMA250)?(num(s.aboveMA250)?80:20):50,normMaybe(s.relativeStrength,-20,20),normMaybe(s.volumeConfirm,0,5)]);
- const munger=avg([s.moat,s.management,s.predictability,s.understandable,s.capitalAllocation].map(v=>normMaybe(v,0,5,60)));
- let penalty=0, risks=[];
- if(hasNum(s.receivableRisk)&&num(s.receivableRisk)>10){penalty+=5;risks.push('应收增速明显快于营收');}
- if(hasNum(s.inventoryRisk)&&num(s.inventoryRisk)>12){penalty+=5;risks.push('存货增速明显快于营收');}
- if(hasNum(s.dilution)&&num(s.dilution)>5){penalty+=4;risks.push('存在较明显股本稀释');}
- if(hasNum(s.ocfToProfit)&&num(s.ocfToProfit)<.6){penalty+=5;risks.push('利润现金含量偏弱');}
- if(hasNum(s.fcfYield)&&num(s.fcfYield)<0){penalty+=5;risks.push('自由现金流为负');}
- if(hasNum(s.ocfPositiveYears3)&&num(s.ocfPositiveYears3)<2){penalty+=5;risks.push('近3年经营现金流稳定性不足');}
- if(hasNum(s.debtRatio)&&num(s.debtRatio)>75){penalty+=6;risks.push('资产负债率偏高');}
- if(hasNum(s.epsRevision)&&num(s.epsRevision)<-8){penalty+=5;risks.push('盈利预期持续下调');}
+ const qualityMetric=weightedDimension([
+  {score:qParts.roe,weight:25},{score:qParts.roic,weight:25},
+  {score:cashMetric.score,coverage:cashMetric.coverage,weight:25},
+  {score:qParts.gross,weight:6},{score:qParts.net,weight:9},{score:qParts.debt,weight:10}
+ ],50);
+ const growthMetric=weightedDimension([
+  {score:hasNum(s.revenueCagr3)?norm(s.revenueCagr3,-5,18):null,weight:25},
+  {score:hasNum(s.profitCagr3)?norm(s.profitCagr3,-10,22):null,weight:35},
+  {score:hasNum(s.revenueGrowthQ)?norm(s.revenueGrowthQ,-15,22):null,weight:15},
+  {score:hasNum(s.profitGrowthQ)?norm(s.profitGrowthQ,-25,28):null,weight:20},
+  {score:hasNum(s.epsRevision)?norm(s.epsRevision,-15,12):null,weight:5}
+ ],50);
+ const peScore=!hasNum(s.pe)?null:(num(s.pe)<=0?15:invNorm(s.pe,10,60));
+ const pbRoe=hasNum(s.pb)&&num(s.pb)>0&&hasNum(s.roe)&&num(s.roe)>0?norm(num(s.roe)/num(s.pb),2,8):null;
+ const valueMetric=weightedDimension([
+  {score:peScore,weight:35},{score:pbRoe,weight:25},
+  {score:hasNum(s.fcfYield)?norm(s.fcfYield,-2,8):null,weight:30},
+  {score:hasNum(s.dividendYield)?norm(s.dividendYield,0,6):null,weight:10}
+ ],50);
+ const trendMetric=weightedDimension([
+  {score:hasNum(s.aboveMA60)?(num(s.aboveMA60)?75:35):null,weight:25},
+  {score:hasNum(s.ma60Slope)?norm(s.ma60Slope,-5,5):null,weight:20},
+  {score:hasNum(s.aboveMA250)?(num(s.aboveMA250)?80:30):null,weight:20},
+  {score:hasNum(s.relativeStrength)?norm(s.relativeStrength,-20,20):null,weight:25},
+  {score:hasNum(s.volumeConfirm)?norm(s.volumeConfirm,0,5):null,weight:10}
+ ],50);
+ const mungerMetric=weightedDimension([
+  {score:hasNum(s.moat)?norm(s.moat,0,5):null,weight:1},
+  {score:hasNum(s.management)?norm(s.management,0,5):null,weight:1},
+  {score:hasNum(s.predictability)?norm(s.predictability,0,5):null,weight:1},
+  {score:hasNum(s.understandable)?norm(s.understandable,0,5):null,weight:1},
+  {score:hasNum(s.capitalAllocation)?norm(s.capitalAllocation,0,5):null,weight:1}
+ ],50);
+ const quality=qualityMetric.score,growth=growthMetric.score,value=valueMetric.score,trend=trendMetric.score,munger=mungerMetric.score;
+ let penalty=0,risks=[];
+ if(hasNum(s.receivableRisk)&&num(s.receivableRisk)>10){penalty+=3;risks.push('应收增速明显快于营收');}
+ if(hasNum(s.inventoryRisk)&&num(s.inventoryRisk)>12){penalty+=3;risks.push('存货增速明显快于营收');}
+ if(hasNum(s.dilution)&&num(s.dilution)>5){penalty+=3;risks.push('存在较明显股本稀释');}
+ if(hasNum(s.ocfToProfit)&&num(s.ocfToProfit)<.5){penalty+=3;risks.push('利润现金含量偏弱');}
+ if(hasNum(s.fcfYield)&&num(s.fcfYield)<0){penalty+=3;risks.push('自由现金流为负');}
+ if(hasNum(ocfYears)&&num(ocfYears)<2){penalty+=2;risks.push('近3年经营现金流稳定性不足');}
+ if(hasNum(s.debtRatio)&&num(s.debtRatio)>80){penalty+=4;risks.push('资产负债率偏高');}
+ if(hasNum(s.epsRevision)&&num(s.epsRevision)<-10){penalty+=3;risks.push('盈利预期持续下调');}
+ penalty=Math.min(penalty,12);
  const w=getWeights().norm;
- let score=quality*w.quality+growth*w.growth+value*w.value+trend*w.trend+munger*w.munger-penalty;
- const hard=[];
- if(!hasNum(s.roe)||num(s.roe)<num($('minRoe').value)) hard.push(!hasNum(s.roe)?'ROE数据缺失':'ROE低于门槛');
- if(num($('minRoic').value)>0&&(!hasNum(s.roic)||num(s.roic)<num($('minRoic').value))) hard.push(!hasNum(s.roic)?'ROIC数据缺失/不适用':'ROIC低于门槛');
- if(num($('minFcfYield').value)>-99&&(!hasNum(s.fcfYield)||num(s.fcfYield)<num($('minFcfYield').value))) hard.push(!hasNum(s.fcfYield)?'自由现金流收益率缺失/不适用':'自由现金流收益率低于门槛');
- if(num($('minOcfYears').value)>0&&(!hasNum(s.ocfPositiveYears3)||num(s.ocfPositiveYears3)<num($('minOcfYears').value))) hard.push('近3年经营现金流为正年数不足');
- if($('requireExactCash').checked&&s.cashFlowDataLevel!=='精确') hard.push('未取得精确现金流明细');
- if(!hasNum(s.debtRatio)||num(s.debtRatio)>num($('maxDebt').value)) hard.push(!hasNum(s.debtRatio)?'负债率数据缺失':'负债率超过门槛');
- if(num($('maxPe').value)>0 && (!hasNum(s.pe)||num(s.pe)<=0||num(s.pe)>num($('maxPe').value))) hard.push(!hasNum(s.pe)||num(s.pe)<=0?'PE不可用/处于亏损':'PE超过门槛');
- if(num($('minMarketCap').value)>0 && (!hasNum(s.marketCap)||num(s.marketCap)<num($('minMarketCap').value))) hard.push(!hasNum(s.marketCap)?'市值数据缺失':'市值低于门槛');
- if($('requirePositiveOCF').checked && !num(s.ocfPositive)) hard.push('经营现金流为负或缺失');
- if($('requireProfitGrowth').checked && (!hasNum(s.profitGrowthQ)||num(s.profitGrowthQ)<=0)) hard.push('最新利润未增长');
- if($('requireAboveMA60').checked && !num(s.aboveMA60)) hard.push('未通过60日趋势代理');
- const passed=hard.length===0;
- if(!passed) score=Math.min(score,49);
+ let rawScore=quality*w.quality+growth*w.growth+value*w.value+trend*w.trend+munger*w.munger-penalty;
+ rawScore=clamp(rawScore);
+ const dataCoverage=Math.round((qualityMetric.coverage*w.quality+growthMetric.coverage*w.growth+valueMetric.coverage*w.value+trendMetric.coverage*w.trend+mungerMetric.coverage*w.munger)*100);
+ const coreCoverage=Math.round((qualityMetric.coverage*.45+growthMetric.coverage*.30+valueMetric.coverage*.25)*100);
+ const confidenceFactor=.45+.55*(coreCoverage/100);
+ let score=rawScore>50?50+(rawScore-50)*confidenceFactor:rawScore;
+ if(coreCoverage<25)score=Math.min(score,57);
+ else if(coreCoverage<40)score=Math.min(score,62);
+ else if(coreCoverage<55)score=Math.min(score,67);
+ else if(coreCoverage<70)score=Math.min(score,74);
  score=clamp(score);
+ const confidenceLevel=coreCoverage>=75?'高':coreCoverage>=55?'中':'低';
+ const hard=[],pending=[];
+ const addThreshold=(value,failText,missingText,test)=>{if(!hasNum(value))pending.push(missingText);else if(test(num(value)))hard.push(failText);};
+ addThreshold(s.roe,'ROE低于门槛','ROE数据待核验',v=>v<num($('minRoe').value));
+ if(num($('minRoic').value)>0)addThreshold(s.roic,'ROIC低于门槛','ROIC数据缺失/不适用',v=>v<num($('minRoic').value));
+ if(num($('minFcfYield').value)>-99)addThreshold(s.fcfYield,'自由现金流收益率低于门槛','自由现金流收益率待核验',v=>v<num($('minFcfYield').value));
+ if(num($('minOcfYears').value)>0)addThreshold(ocfYears,'近3年经营现金流为正年数不足','近3年经营现金流数据待核验',v=>v<num($('minOcfYears').value));
+ if($('requireExactCash').checked&&s.cashFlowDataLevel!=='精确')hard.push('未取得精确现金流明细');
+ addThreshold(s.debtRatio,'负债率超过门槛','负债率数据待核验',v=>v>num($('maxDebt').value));
+ if(num($('maxPe').value)>0){if(!hasNum(s.pe)||num(s.pe)<=0)pending.push('PE不可用/处于亏损');else if(num(s.pe)>num($('maxPe').value))hard.push('PE超过门槛');}
+ if(num($('minMarketCap').value)>0)addThreshold(s.marketCap,'市值低于门槛','市值数据待核验',v=>v<num($('minMarketCap').value));
+ const minCoreCoverage=clamp(num($('minCoreCoverage').value),0,100);
+ if(coreCoverage<minCoreCoverage)pending.push(`核心财务数据覆盖不足（${coreCoverage}%＜${minCoreCoverage}%）`);
+ if($('requirePositiveOCF').checked){if(!hasNum(s.ocfPositive))pending.push('最新经营现金流数据待核验');else if(!num(s.ocfPositive))hard.push('最新经营现金流为负');}
+ if($('requireProfitGrowth').checked){if(!hasNum(s.profitGrowthQ))pending.push('最新利润增速待核验');else if(num(s.profitGrowthQ)<=0)hard.push('最新利润未增长');}
+ if($('requireAboveMA60').checked){if(!hasNum(s.aboveMA60))pending.push('60日趋势数据待核验');else if(!num(s.aboveMA60))hard.push('未通过60日趋势代理');}
+ const screenStatus=hard.length?'fail':pending.length?'pending':'pass';
+ const passed=screenStatus==='pass';
+ const grade=score>=75?'A':score>=65?'B':score>=55?'C':'D';
  const positives=[];
- if(quality>=75) positives.push('资本回报和现金质量较好');
- if(growth>=70) positives.push('业绩趋势处于改善区间');
- if(value>=70) positives.push('估值具备较明显安全边际');
- if(trend>=70) positives.push('价格和相对强弱已开始验证');
- if(munger>=80) positives.push('护城河、管理层和可预测性评价突出');
- if(hasNum(s.ocfToProfit)&&num(s.ocfToProfit)>=1) positives.push('经营现金流大致覆盖净利润');
- if(hasNum(s.fcfYield)&&num(s.fcfYield)>=4) positives.push('自由现金流收益率较有吸引力');
- if(hasNum(s.ocfPositiveYears3)&&num(s.ocfPositiveYears3)>=3) positives.push('近3年经营现金流持续为正');
- if(hasNum(s.profitGrowthQ)&&num(s.profitGrowthQ)<0) risks.push('最新报告期利润仍在下降');
- if(hasNum(s.aboveMA60)&&!num(s.aboveMA60)) risks.push('60日价格趋势代理尚未转强');
- if(hasNum(s.pe)&&num(s.pe)>35) risks.push('估值对增长要求较高');
- if(s.autoData&&s.cashFlowDataLevel==='估算') risks.push('ROIC/自由现金流采用估算口径');
- if(s.autoData&&s.cashFlowDataLevel==='不适用') risks.push('金融股不适用工业企业ROIC/FCF公式');
- if(s.autoData) risks.push('主观护城河与管理层项仍需人工复核');
- if(hard.length) risks.unshift(...hard);
- const grade=!passed?'D':score>=80?'A':score>=68?'B':score>=55?'C':'D';
- return {...s,quality,growth,value,trend,munger,penalty,score,passed,grade,positives:[...new Set(positives)].slice(0,4),risks:[...new Set(risks)].slice(0,6),hard};
+ if(quality>=72&&qualityMetric.coverage>=.6)positives.push('资本回报和现金质量较好');
+ if(growth>=68&&growthMetric.coverage>=.55)positives.push('业绩趋势处于改善区间');
+ if(value>=68&&valueMetric.coverage>=.55)positives.push('估值具备较明显安全边际');
+ if(trend>=68&&trendMetric.coverage>=.55)positives.push('价格和相对强弱已开始验证');
+ if(munger>=80&&mungerMetric.coverage>=.6)positives.push('护城河、管理层和可预测性评价突出');
+ if(hasNum(s.ocfToProfit)&&num(s.ocfToProfit)>=1)positives.push('经营现金流大致覆盖净利润');
+ if(hasNum(s.fcfYield)&&num(s.fcfYield)>=4)positives.push('自由现金流收益率较有吸引力');
+ if(hasNum(ocfYears)&&num(ocfYears)>=3)positives.push('近3年经营现金流持续为正');
+ if(hasNum(s.profitGrowthQ)&&num(s.profitGrowthQ)<0)risks.push('最新报告期利润仍在下降');
+ if(hasNum(s.aboveMA60)&&!num(s.aboveMA60))risks.push('60日价格趋势代理尚未转强');
+ if(hasNum(s.pe)&&num(s.pe)>40)risks.push('估值对增长要求较高');
+ if(s.autoData&&s.cashFlowDataLevel==='估算')risks.push('ROIC/自由现金流采用估算口径');
+ if(s.autoData&&s.cashFlowDataLevel==='不适用')risks.push('金融股需采用行业专用估值模型');
+ if(coreCoverage<55)risks.push(`核心财务数据覆盖仅${coreCoverage}%，高分可信度受限`);
+ if(s.autoData)risks.push('主观护城河与管理层项仍需人工复核');
+ if(hard.length)risks.unshift(...hard);
+ if(pending.length)risks.unshift(...pending.map(x=>'待核验：'+x));
+ const dimensionCoverage={quality:Math.round(qualityMetric.coverage*100),growth:Math.round(growthMetric.coverage*100),value:Math.round(valueMetric.coverage*100),trend:Math.round(trendMetric.coverage*100),munger:Math.round(mungerMetric.coverage*100)};
+ const decision=judgeBuy({...s,quality,growth,value,trend,munger,penalty,rawScore,score,passed,grade,screenStatus,pending,dataCoverage,coreCoverage,confidenceLevel,dimensionCoverage,hard});
+ return {...s,ocfPositiveYears3:ocfYears,fcfPositiveYears3:fcfYears,quality,growth,value,trend,munger,penalty,rawScore,score,passed,grade,screenStatus,pending,dataCoverage,coreCoverage,confidenceLevel,dimensionCoverage,positives:[...new Set(positives)].slice(0,4),risks:[...new Set(risks)].slice(0,8),hard,...decision};
 }
 function rescore(){
  scored=stocks.map((s,i)=>({...compute(s),_index:i}));
@@ -328,9 +470,10 @@ function renderFilters(){
  const current=$('industryFilter').value; const inds=[...new Set(stocks.map(s=>s.industry).filter(Boolean))].sort(); $('industryFilter').innerHTML='<option value="all">全部行业</option>'+inds.map(x=>`<option>${esc(x)}</option>`).join(''); if(inds.includes(current))$('industryFilter').value=current;
 }
 function filtered(){
- const q=$('search').value.trim().toLowerCase(), g=$('gradeFilter').value, ind=$('industryFilter').value;
- let a=scored.filter(s=>(!q||[s.code,s.name,s.industry].join(' ').toLowerCase().includes(q))&&(g==='all'||s.grade===g)&&(ind==='all'||s.industry===ind));
- a.sort((x,y)=>{let a=x[sortKey],b=y[sortKey]; if(typeof a==='string')return a.localeCompare(b,'zh-CN')*sortDir; return (num(a)-num(b))*sortDir;}); return a;
+ const q=$('search').value.trim().toLowerCase(), bf=$('buyFilter').value, ind=$('industryFilter').value;
+ const buyMatch=s=>bf==='all'||(bf==='buy'&&s.buyGroup==='buy')||(bf==='wait'&&s.buyGroup==='wait')||(bf==='data'&&s.buyGroup==='data')||(bf==='avoid'&&s.buyGroup==='avoid')||(bf==='special'&&s.buyGroup==='special');
+ let a=scored.filter(s=>(!q||[s.code,s.name,s.industry].join(' ').toLowerCase().includes(q))&&buyMatch(s)&&(ind==='all'||s.industry===ind));
+ a.sort((x,y)=>{let av=x[sortKey],bv=y[sortKey]; if(typeof av==='string')return av.localeCompare(bv,'zh-CN')*sortDir; return (num(av)-num(bv))*sortDir;}); return a;
 }
 function render(){
  const all=filtered();
@@ -338,31 +481,54 @@ function render(){
  currentPage=Math.max(1,Math.min(currentPage,totalPages));
  const start=(currentPage-1)*pageSize, end=Math.min(start+pageSize,all.length), data=all.slice(start,end);
  $('tbody').innerHTML=data.map((s,i)=>row(s,start+i+1)).join(''); $('empty').style.display=all.length?'none':'block';
- $('visibleInfo').textContent=all.length?`共筛选到 ${all.length} 只，当前显示第 ${start+1}–${end} 名；可翻页查看全部结果。`:'当前没有符合条件的股票。';
+ $('visibleInfo').textContent=all.length?`共 ${all.length} 只，当前显示第 ${start+1}–${end} 名；买入判断按成熟度排序。`:'当前没有符合条件的股票。';
  $('pageInfo').textContent=`第 ${currentPage} / ${totalPages} 页 · 共 ${all.length} 只`; $('pageJump').max=totalPages; $('pageJump').value=currentPage;
  ['firstPage','prevPage'].forEach(id=>$(id).disabled=currentPage<=1); ['nextPage','lastPage'].forEach(id=>$(id).disabled=currentPage>=totalPages);
- const pass=scored.filter(x=>x.passed); $('statCount').textContent=scored.length; $('statPassed').textContent=pass.length; $('statA').textContent=pass.filter(x=>x.grade==='A').length; $('statAvg').textContent=pass.length?Math.round(avg(pass.map(x=>x.score))):0; $('statReversal').textContent=pass.filter(x=>x.value>=65&&x.trend>=55&&(!hasNum(x.epsRevision)||x.epsRevision>=-3)).length;
+ $('statCount').textContent=scored.length; $('statBuy').textContent=scored.filter(x=>x.buyGroup==='buy').length; $('statWait').textContent=scored.filter(x=>x.buyGroup==='wait').length; $('statAvoid').textContent=scored.filter(x=>['avoid','data','special'].includes(x.buyGroup)).length;
  document.querySelectorAll('[contenteditable=true]').forEach(el=>el.addEventListener('blur',inlineEdit));
 }
 function row(s,rank){
- const cls=s.score>=75?'goodscore':s.score>=55?'midscore':'badscore'; const summary=(s.positives[0]||'等待更多验证')+(s.risks[0]?'；风险：'+s.risks[0]:'');
- const quote=hasNum(s.price)?`现价 ${num(s.price).toFixed(2)}${hasNum(s.pctChange)?` · ${num(s.pctChange)>=0?'+':''}${num(s.pctChange).toFixed(2)}%`:''}`:'';
- return `<tr><td class="rank">${rank}</td><td><div class="name">${esc(s.name)}${s.autoData?'<span class="auto-badge">自动</span>':''}</div><div class="code">${esc(s.code)}${quote?' · '+esc(quote):''}</div></td><td>${esc(s.industry||'-')}</td><td><span class="score ${cls}">${s.score.toFixed(1)}</span></td><td><span class="pill ${s.grade}">${s.grade==='A'?'重点研究':s.grade==='B'?'候选观察':s.grade==='C'?'一般观察':'暂不通过'}</span></td>${['quality','growth','value','trend','munger'].map(k=>`<td><div>${Math.round(s[k])}</div><div class="bar"><i style="width:${s[k]}%"></i></div></td>`).join('')}<td class="reason" title="${esc(summary)}">${esc(summary)}</td><td><div class="btnrow"><button class="btn ghost small" onclick="openDetail(${s._index})">分析</button><button class="btn ghost small" onclick="openEdit(${s._index})">编辑</button></div></td></tr>`;
+ const cls=s.score>=75?'goodscore':s.score>=55?'midscore':'badscore';
+ const quote=hasNum(s.price)?`${num(s.price).toFixed(2)}元${hasNum(s.pctChange)?` · ${num(s.pctChange)>=0?'+':''}${num(s.pctChange).toFixed(2)}%`:''}`:'价格暂无';
+ const reason=(s.buyBlocks&&s.buyBlocks[0])||(s.buyReason&&s.buyReason[0])||(s.risks&&s.risks[0])||'继续核查财报';
+ return `<tr><td class="rank">${rank}</td><td><div class="name">${esc(s.name)}${s.autoData?'<span class="auto-badge">自动</span>':''}</div><div class="code">${esc(s.code)} · ${esc(quote)}</div></td><td>${esc(s.industry||'-')}</td><td><span class="decision-pill ${s.decisionClass}">${esc(s.buyDecision)}</span><div class="readiness">成熟度 <b>${s.buyReadiness}</b>/100</div></td><td><span class="score ${cls}">${s.score.toFixed(1)}</span><div class="small muted">核心覆盖${s.coreCoverage}%</div></td>${['quality','growth','value','trend'].map(k=>`<td><div>${Math.round(s[k])}</div><div class="bar"><i style="width:${s[k]}%"></i></div></td>`).join('')}<td class="reason" title="${esc(reason)}">${esc(reason)}</td><td><button class="btn ghost small" onclick="openDetail(${s._index})">查看判断</button></td></tr>`;
 }
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function inlineEdit(e){/* 保留扩展接口 */}
 
 function openDetail(idx){
- const s=compute(stocks[idx]); $('detailTitle').textContent=s.name; $('detailSub').textContent=`${s.code} · ${s.industry||'未分类'} · 综合评分 ${s.score.toFixed(1)} · ${s.grade}级${s.autoData?' · 自动数据':''}`;
- const dims=[['企业质量',s.quality],['成长趋势',s.growth],['估值安全边际',s.value],['价格趋势',s.trend],['芒格式判断',s.munger]];
- const verdict=s.grade==='A'?'进入重点研究池：质量、价格与趋势较为协调。':s.grade==='B'?'进入候选观察池：至少还有一项关键条件需要验证。':s.grade==='C'?'仅适合一般观察：优势尚不足以覆盖风险。':'暂不通过：硬性指标或综合评分不足。';
- $('detailBody').innerHTML=`<div class="detail-grid"><div><div class="card-lite"><h3 style="margin-top:0">五维评分</h3>${dims.map(d=>`<div class="dimension"><span>${d[0]}</span><div class="bar"><i style="width:${d[1]}%"></i></div><b>${Math.round(d[1])}</b></div>`).join('')}<div class="bullet neutral">${verdict}</div></div><div class="card-lite" style="margin-top:16px"><h3 style="margin-top:0">智能结论</h3><div class="bullets">${(s.positives.length?s.positives:['暂未发现明显优势']).map(x=>`<div class="bullet positive">✓ ${esc(x)}</div>`).join('')}${(s.risks.length?s.risks:['暂无显著风险信号']).map(x=>`<div class="bullet negative">! ${esc(x)}</div>`).join('')}</div></div></div><div><div class="card-lite"><h3 style="margin-top:0">关键指标</h3>${metric('现价',s.price,'元')}${metric('总市值',s.marketCap,'亿元')}${metric('ROE',s.roe,'%')}${metric('ROIC',s.roic,'%')}${textMetric('ROIC口径',s.roicMethod)}${metric('经营现金流/净利润',s.ocfToProfit,'')}${moneyMetric('经营现金流',s.operatingCashFlow)}${moneyMetric('自由现金流',s.freeCashFlow)}${metric('自由现金流收益率',s.fcfYield,'%')}${textMetric('自由现金流口径',s.fcfMethod)}${textMetric('数据精度',s.cashFlowDataLevel)}${arrayMetric('近3年经营现金流',s.ocfYears3)}${arrayMetric('近3年自由现金流',s.fcfYears3)}${metric('经营现金流3年趋势',s.ocfTrend3,'%')}${metric('自由现金流3年趋势',s.fcfTrend3,'%')}${metric('营收3年CAGR',s.revenueCagr3,'%')}${metric('净利润3年CAGR',s.profitCagr3,'%')}${metric('最新营收增速',s.revenueGrowthQ,'%')}${metric('最新利润增速',s.profitGrowthQ,'%')}${metric('PE TTM',s.pe,'倍')}${metric('60日相对强弱代理',s.relativeStrength,'%')}</div><div class="card-lite" style="margin-top:16px"><h3 style="margin-top:0">下一步核查</h3><div class="bullets"><div class="bullet neutral">1. 阅读近3年年报，确认护城河是否真实转化为定价权和现金流。</div><div class="bullet neutral">2. 检查利润增长是否来自主营业务，而非补贴、公允价值或一次性收益。</div><div class="bullet neutral">3. 对比行业龙头和历史估值区间，避免只看绝对PE。</div><div class="bullet neutral">4. 等待盈利预测与60日趋势同时转强，可提高反转可信度。</div></div></div></div></div>`;
+ const s=compute(stocks[idx]);
+ $('detailTitle').textContent=s.name;
+ $('detailSub').textContent=`${s.code} · ${s.industry||'未分类'} · 可信分 ${s.score.toFixed(1)} · 核心数据覆盖 ${s.coreCoverage}% · ${s.confidenceLevel}可信${s.autoData?' · 自动数据':''}`;
+ const format=(v,u='')=>hasNum(v)?num(v).toFixed(1)+u:'暂无';
+ const reasons=(s.buyReason&&s.buyReason.length?s.buyReason:['暂未形成明确支持项']);
+ const blocks=(s.buyBlocks&&s.buyBlocks.length?s.buyBlocks:['暂无明显阻碍，但仍需核查年报']);
+ $('detailBody').innerHTML=`
+  <div class="buy-card ${s.decisionClass}">
+   <div class="buy-head"><h3>规则判断：${esc(s.buyDecision)}</h3><div class="buy-score">买入成熟度 ${s.buyReadiness}/100</div></div>
+   <div class="buy-action">${esc(s.buyAction)}</div>
+   <div class="buy-reasons"><div class="mini-card"><b>支持条件</b><br>${reasons.map(x=>'✓ '+esc(x)).join('<br>')}</div><div class="mini-card"><b>主要阻碍</b><br>${blocks.map(x=>'• '+esc(x)).join('<br>')}</div></div>
+  </div>
+  <div class="detail-grid">
+   <div>
+    <div class="card-lite"><h3 style="margin-top:0">四项核心判断</h3>
+     ${[['企业质量',s.quality,s.dimensionCoverage.quality],['成长趋势',s.growth,s.dimensionCoverage.growth],['估值安全边际',s.value,s.dimensionCoverage.value],['价格趋势',s.trend,s.dimensionCoverage.trend]].map(d=>`<div class="dimension"><span>${d[0]}<span class="small muted">（覆盖${d[2]}%）</span></span><div class="bar"><i style="width:${d[1]}%"></i></div><b>${Math.round(d[1])}</b></div>`).join('')}
+    </div>
+    <div class="card-lite" style="margin-top:16px"><h3 style="margin-top:0">买前必须确认</h3><div class="bullets"><div class="bullet neutral">1. 最新公告中是否出现业绩预告、减值、监管处罚或大股东减持。</div><div class="bullet neutral">2. 近3年利润是否真实转化为经营现金流，自由现金流是否可持续。</div><div class="bullet neutral">3. 当前PE和现金流收益率是否建立在周期高点利润上。</div><div class="bullet neutral">4. 即使结论为“可分批关注”，也不代表适合一次性重仓或追涨。</div></div></div>
+   </div>
+   <div>
+    <div class="card-lite"><h3 style="margin-top:0">关键指标</h3><div class="key-grid">
+     ${[['现价',format(s.price,'元')],['总市值',format(s.marketCap,'亿元')],['ROE',format(s.roe,'%')],['ROIC',format(s.roic,'%')],['经营现金流/净利润',format(s.ocfToProfit,'')],['自由现金流收益率',format(s.fcfYield,'%')],['资产负债率',format(s.debtRatio,'%')],['PE',format(s.pe,'倍')],['净利润3年CAGR',format(s.profitCagr3,'%')],['最新利润增速',format(s.profitGrowthQ,'%')],['60日相对强弱',format(s.relativeStrength,'%')],['数据精度',s.cashFlowDataLevel||'暂无']].map(x=>`<div class="key-item"><span>${x[0]}</span><b>${esc(x[1])}</b></div>`).join('')}
+    </div></div>
+    <details class="advanced" style="margin-top:16px"><summary>查看现金流口径与补充信息</summary><div class="advanced-body">${textMetric('ROIC口径',s.roicMethod)}${textMetric('自由现金流口径',s.fcfMethod)}${arrayMetric('近3年经营现金流',s.ocfYears3)}${arrayMetric('近3年自由现金流',s.fcfYears3)}${metric('经营现金流3年趋势',s.ocfTrend3,'%')}${metric('自由现金流3年趋势',s.fcfTrend3,'%')}</div></details>
+   </div>
+  </div>`;
  $('detailModal').classList.add('show');
 }
-function metric(k,v,u){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b>${hasNum(v)?num(v).toFixed(1)+u:'待补充'}</b></div>`;}
-function textMetric(k,v){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b style="text-align:right">${esc(v||'待补充')}</b></div>`;}
-function moneyMetric(k,v){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b>${hasNum(v)?(num(v)/1e8).toFixed(2)+'亿元':'待补充'}</b></div>`;}
-function arrayMetric(k,v){const a=Array.isArray(v)?v:[];return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b style="text-align:right">${a.length?a.map(x=>hasNum(x)?num(x).toFixed(2):'-').join(' → ')+' 亿元':'待补充'}</b></div>`;}
+function metric(k,v,u){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b>${hasNum(v)?num(v).toFixed(1)+u:'暂无自动数据'}</b></div>`;}
+function textMetric(k,v){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b style="text-align:right">${esc(v||'暂无口径说明')}</b></div>`;}
+function moneyMetric(k,v){return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b>${hasNum(v)?(num(v)/1e8).toFixed(2)+'亿元':'暂无自动数据'}</b></div>`;}
+function arrayMetric(k,v){const a=Array.isArray(v)?v:[];return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f6;gap:12px"><span class="muted">${k}</span><b style="text-align:right">${a.length?a.map(x=>hasNum(x)?num(x).toFixed(2):'-').join(' → ')+' 亿元':'未取得连续3年数据'}</b></div>`;}
 
 function buildEditor(){
  $('editorFields').innerHTML=FIELDS.map(([k,l,t],i)=>`<div class="field ${i<3?'':' '} ${k==='name'?'wide':''}"><label>${l}</label><input name="${k}" type="${t}" ${t==='number'?'step="0.01"':''}></div>`).join('');
@@ -374,7 +540,7 @@ function closeModal(id){$(id).classList.remove('show');}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
 document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
 
-$('stockForm').addEventListener('submit',e=>{e.preventDefault(); const o={}; FIELDS.forEach(([k,,t])=>o[k]=t==='number'?num(document.querySelector(`[name=${k}]`).value):document.querySelector(`[name=${k}]`).value.trim()); if(!o.name){alert('请填写股票名称');return;} if(editingIndex===null)stocks.push(o);else stocks[editingIndex]=o; closeModal('editModal'); rescore();});
+$('stockForm').addEventListener('submit',e=>{e.preventDefault(); const o={}; FIELDS.forEach(([k,,t])=>{const raw=document.querySelector(`[name=${k}]`).value;o[k]=t==='number'?maybeNum(raw):raw.trim();}); if(!o.name){alert('请填写股票名称');return;} if(editingIndex===null)stocks.push(o);else stocks[editingIndex]=o; closeModal('editModal'); rescore();});
 $('deleteBtn').onclick=()=>{if(editingIndex!==null&&confirm('确定删除这只股票？')){stocks.splice(editingIndex,1);closeModal('editModal');rescore();}};
 
 $('fileInput').addEventListener('change',async e=>{
@@ -384,7 +550,7 @@ $('fileInput').addEventListener('change',async e=>{
 });
 function mapImported(r){
  const aliases={code:['code','股票代码','证券代码'],name:['name','股票名称','证券简称','简称'],industry:['industry','行业'],roe:['roe','ROE','净资产收益率'],roic:['roic','ROIC','投入资本回报率'],grossMargin:['grossMargin','毛利率'],netMargin:['netMargin','净利率','销售净利率'],debtRatio:['debtRatio','资产负债率'],ocfToProfit:['ocfToProfit','经营现金流/净利润','经营现金流净额/净利润'],fcfYield:['fcfYield','自由现金流收益率'],ocfTrend3:['ocfTrend3','经营现金流3年趋势'],fcfTrend3:['fcfTrend3','自由现金流3年趋势'],ocfPositiveYears3:['ocfPositiveYears3','经营现金流为正年数'],fcfPositiveYears3:['fcfPositiveYears3','自由现金流为正年数'],revenueCagr3:['revenueCagr3','营收3年复合增速'],profitCagr3:['profitCagr3','净利润3年复合增速'],revenueGrowthQ:['revenueGrowthQ','最新季度营收增速','营收同比'],profitGrowthQ:['profitGrowthQ','最新季度利润增速','净利润同比'],epsRevision:['epsRevision','EPS预期调整','盈利预测调整'],pe:['pe','PE','PE TTM','市盈率'],pb:['pb','PB','市净率'],dividendYield:['dividendYield','股息率'],aboveMA60:['aboveMA60','站上60日线'],ma60Slope:['ma60Slope','60日线斜率'],aboveMA250:['aboveMA250','站上250日线'],relativeStrength:['relativeStrength','120日相对强弱'],volumeConfirm:['volumeConfirm','量价确认'],moat:['moat','护城河'],management:['management','管理层'],predictability:['predictability','可预测性'],understandable:['understandable','能力圈','易理解'],capitalAllocation:['capitalAllocation','资本配置'],receivableRisk:['receivableRisk','应收增速-营收增速'],inventoryRisk:['inventoryRisk','存货增速-营收增速'],dilution:['dilution','股本稀释'],ocfPositive:['ocfPositive','经营现金流为正']};
- const o={}; Object.entries(aliases).forEach(([k,arr])=>{const found=arr.find(a=>Object.prototype.hasOwnProperty.call(r,a)); o[k]=found===undefined?'':r[found];}); FIELDS.forEach(([k,,t])=>{if(t==='number')o[k]=num(String(o[k]).replace(/%|倍|,/g,''));}); return o;
+ const o={}; Object.entries(aliases).forEach(([k,arr])=>{const found=arr.find(a=>Object.prototype.hasOwnProperty.call(r,a)); o[k]=found===undefined?'':r[found];}); FIELDS.forEach(([k,,t])=>{if(t==='number')o[k]=maybeNum(String(o[k]??'').replace(/%|倍|,/g,''));}); return o;
 }
 function parseCSV(text){
  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim()); if(!lines.length)return[]; const parse=line=>{const a=[];let s='',q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){s+='"';i++;}else if(c==='"')q=!q;else if(c===','&&!q){a.push(s);s='';}else s+=c;}a.push(s);return a;}; const h=parse(lines[0]); return lines.slice(1).map(l=>{const v=parse(l),o={};h.forEach((x,i)=>o[x.trim()]=v[i]??'');return o;});
@@ -394,7 +560,8 @@ function downloadCSV(filename,rows){
 }
 $('downloadTemplate').onclick=()=>{const row={};FIELDS.forEach(([k,l])=>row[l]='');downloadCSV('智能选股导入模板.csv',[row]);};
 $('exportBtn').onclick=()=>{
- const rows=filtered().filter(x=>x.passed).map((s,i)=>({排名:i+1,股票代码:s.code,股票名称:s.name,行业:s.industry,现价:s.price,涨跌幅:s.pctChange,总市值亿元:s.marketCap,综合分:s.score.toFixed(1),评级:s.grade,企业质量:Math.round(s.quality),成长趋势:Math.round(s.growth),估值安全边际:Math.round(s.value),价格趋势:Math.round(s.trend),芒格式判断:Math.round(s.munger),ROE:s.roe,ROIC:s.roic,ROIC口径:s.roicMethod,资产负债率:s.debtRatio,毛利率:s.grossMargin,净利率:s.netMargin,经营现金流净额:s.operatingCashFlow,经营现金流除净利润:s.ocfToProfit,自由现金流:s.freeCashFlow,自由现金流收益率:s.fcfYield,自由现金流口径:s.fcfMethod,现金流数据精度:s.cashFlowDataLevel,近3年经营现金流亿元:Array.isArray(s.ocfYears3)?s.ocfYears3.join('|'):'',近3年自由现金流亿元:Array.isArray(s.fcfYears3)?s.fcfYears3.join('|'):'',经营现金流3年趋势:s.ocfTrend3,自由现金流3年趋势:s.fcfTrend3,PE_TTM:s.pe,PB:s.pb,股息率:s.dividendYield,最新营收增速:s.revenueGrowthQ,最新利润增速:s.profitGrowthQ,六十日相对强弱代理:s.relativeStrength,数据来源:s.dataSource||'手动/导入',数据时间:s.dataDate||'',核心优势:s.positives.join('；'),主要风险:s.risks.join('；')})); if(!rows.length){alert('没有可导出的通过筛选股票');return;} downloadCSV('智能选股结果.csv',rows);
+ const rows=filtered().map((s,i)=>({排名:i+1,股票代码:s.code,股票名称:s.name,行业:s.industry,现价:s.price,买入判断:s.buyDecision,买入成熟度:s.buyReadiness,操作建议:s.buyAction,可信综合分:s.score.toFixed(1),核心数据覆盖率:s.coreCoverage,企业质量:Math.round(s.quality),成长趋势:Math.round(s.growth),估值安全边际:Math.round(s.value),价格趋势:Math.round(s.trend),ROE:s.roe,ROIC:s.roic,资产负债率:s.debtRatio,经营现金流除净利润:s.ocfToProfit,自由现金流收益率:s.fcfYield,PE:s.pe,最新利润增速:s.profitGrowthQ,主要支持:(s.buyReason||[]).join('；'),主要阻碍:(s.buyBlocks||[]).join('；'),数据来源:s.dataSource||'',数据时间:s.dataDate||''}));
+ if(!rows.length){alert('当前没有可导出的结果');return;} downloadCSV('智能选股_买入判断结果.csv',rows);
 };
 
 
@@ -510,6 +677,7 @@ async function loadHostedStocks(manual=true){
   stocks=rows.map(x=>({...x,autoData:1,dataSource:x.dataSource||payload.source||AUTO_SOURCE,dataDate:x.dataDate||payload.updatedAt||''}));
   localStorage.setItem('smartStocksLastSync',String(Date.now()));
   localStorage.setItem('smartStocksLastSyncText',payload.updatedAt||new Date().toLocaleString('zh-CN',{hour12:false}));
+  localStorage.setItem('smartStocksCacheSchema',CACHE_SCHEMA_VERSION);
   setSyncProgress(90);
   const cached=rescore();
   setSyncProgress(100);
@@ -533,7 +701,7 @@ async function syncAStocks(manual=true){
   if(!$('includeBJ').checked)rows=rows.filter(q=>!isBJCode(q.f12,q.f13));
   const med60=median(rows.map(q=>validQuote(q.f24)).filter(Number.isFinite));
   stocks=rows.map(q=>quoteToStock(q,med60)).filter(x=>x.code&&x.name);
-  localStorage.setItem('smartStocksLastSync',String(Date.now()));localStorage.setItem('smartStocksLastSyncText',new Date().toLocaleString('zh-CN',{hour12:false}));
+  localStorage.setItem('smartStocksLastSync',String(Date.now()));localStorage.setItem('smartStocksLastSyncText',new Date().toLocaleString('zh-CN',{hour12:false}));localStorage.setItem('smartStocksCacheSchema','direct-quote-only');
   setSyncProgress(90);const cached=rescore();setSyncProgress(100);
   const validRoe=stocks.filter(x=>hasNum(x.roe)).length, validPe=stocks.filter(x=>hasNum(x.pe)&&x.pe>0).length;
   if(!cached)localStorage.removeItem('smartStocksLastSync');
@@ -544,20 +712,35 @@ async function syncAStocks(manual=true){
   console.error(err);setSyncStatus('bad','自动同步失败',err.message,'可稍后重试，或继续使用Excel/CSV导入。部分网络环境会拦截第三方JSONP接口。');if(manual)alert('大A自动同步失败：'+err.message+'\n\n请检查网络后重试，原有数据不会丢失。');
  }finally{syncRunning=false;}
 }
+function cacheFinancialRichness(list){
+ const auto=list.filter(x=>x&&x.autoData);
+ if(!auto.length)return 0;
+ const sample=auto.slice(0,Math.min(500,auto.length));
+ const rich=sample.filter(x=>[x.roe,x.debtRatio,x.revenueGrowthQ,x.profitGrowthQ,x.pe,x.pb,x.roic,x.fcfYield,x.ocfToProfit].filter(hasNum).length>=4).length;
+ return rich/sample.length;
+}
 function restoreAutoOptions(){
  try{const o=JSON.parse(localStorage.getItem('smartStocksAutoOptions')||'{}');if(typeof o.autoSyncOnOpen==='boolean')$('autoSyncOnOpen').checked=o.autoSyncOnOpen;if(typeof o.excludeST==='boolean')$('excludeST').checked=o.excludeST;if(typeof o.includeBJ==='boolean')$('includeBJ').checked=o.includeBJ;if(o.syncSpeed)$('syncSpeed').value=o.syncSpeed;if(typeof o.retryFailedPages==='boolean')$('retryFailedPages').checked=o.retryFailedPages;}catch(e){}
- const autoCount=stocks.filter(x=>x.autoData).length,last=localStorage.getItem('smartStocksLastSyncText');if(autoCount){const partial=autoCount<500;setSyncStatus(partial?'bad':'ok',partial?'检测到旧版残缺缓存':'已载入本地缓存的大A数据',`${autoCount}只${last?' · '+last:''}`,partial?'检测到残缺缓存，网页将自动重新读取云端完整数据。':`来源：${AUTO_SOURCE}缓存。可点击“读取最新大A数据”更新。`);}
+ const autoCount=stocks.filter(x=>x.autoData).length,last=localStorage.getItem('smartStocksLastSyncText');
+ const schemaOk=localStorage.getItem('smartStocksCacheSchema')===CACHE_SCHEMA_VERSION;
+ const richness=cacheFinancialRichness(stocks);
+ window.__forceHostedReload=autoCount>0&&(!schemaOk||richness<.35);
+ if(autoCount){
+  const partial=autoCount<500;
+  const legacy=window.__forceHostedReload&&!partial;
+  setSyncStatus(partial||legacy?'bad':'ok',partial?'检测到残缺缓存':legacy?'检测到旧版财务缓存':'已载入本地缓存的大A数据',`${autoCount}只${last?' · '+last:''}`,partial||legacy?'旧缓存缺少新版财务字段，网页将自动读取最新云端JSON并覆盖。':`来源：${AUTO_SOURCE}缓存。可点击“读取最新大A数据”更新。`);
+ }
 }
 $('syncABtn').onclick=()=>loadHostedStocks(true);$('syncATopBtn').onclick=()=>loadHostedStocks(true);
-$('clearAutoBtn').onclick=()=>{if(confirm('清除自动同步的数据并恢复演示数据？')){stocks=samples;localStorage.removeItem('smartStocksV3Packed');localStorage.removeItem('smartStocksV2');localStorage.removeItem('smartStocksLastSync');localStorage.removeItem('smartStocksLastSyncText');rescore();setSyncStatus('','已恢复演示数据','可再次同步大A','演示数据不代表真实行情。');}};
+$('clearAutoBtn').onclick=()=>{if(confirm('清除自动同步的数据并恢复演示数据？')){stocks=samples;localStorage.removeItem('smartStocksV3Packed');localStorage.removeItem('smartStocksV2');localStorage.removeItem('smartStocksLastSync');localStorage.removeItem('smartStocksLastSyncText');localStorage.removeItem('smartStocksCacheSchema');rescore();setSyncStatus('','已恢复演示数据','可再次同步大A','演示数据不代表真实行情。');}};
 ['autoSyncOnOpen','excludeST','includeBJ','syncSpeed','retryFailedPages'].forEach(id=>$(id).addEventListener('change',save));
 
-['search','gradeFilter','industryFilter'].forEach(id=>$(id).addEventListener('input',()=>{currentPage=1;render();}));
-['minRoe','minRoic','minFcfYield','minOcfYears','maxDebt','maxPe','minMarketCap','requirePositiveOCF','requireExactCash','requireProfitGrowth','requireAboveMA60'].forEach(id=>$(id).addEventListener('change',rescore));
+['search','buyFilter','industryFilter'].forEach(id=>$(id).addEventListener('input',()=>{currentPage=1;render();}));
+['minRoe','minRoic','minFcfYield','minOcfYears','maxDebt','maxPe','minMarketCap','minCoreCoverage','requirePositiveOCF','requireExactCash','requireProfitGrowth','requireAboveMA60'].forEach(id=>$(id).addEventListener('change',rescore));
 ['wQuality','wGrowth','wValue','wTrend','wMunger'].forEach(id=>$(id).addEventListener('input',()=>{updateWeightText();rescore();}));
-$('mode').addEventListener('change',e=>{applyMode(e.target.value);rescore();});
+$('mode').addEventListener('change',e=>{applyMode(e.target.value);updateModeHint(e.target.value);rescore();});
 $('applyBtn').onclick=rescore;
-$('resetBtn').onclick=()=>{applyMode('balanced');$('mode').value='balanced';$('minRoe').value=10;$('minRoic').value=0;$('minFcfYield').value=-99;$('minOcfYears').value=2;$('maxDebt').value=70;$('maxPe').value=60;$('minMarketCap').value=0;$('requirePositiveOCF').checked=true;$('requireExactCash').checked=false;$('requireProfitGrowth').checked=false;$('requireAboveMA60').checked=false;rescore();};
+$('resetBtn').onclick=()=>{applyMode('balanced');$('mode').value='balanced';updateModeHint('balanced');$('buyFilter').value='all';$('minRoe').value=8;$('minRoic').value=0;$('minFcfYield').value=-99;$('minOcfYears').value=0;$('maxDebt').value=80;$('maxPe').value=0;$('minMarketCap').value=0;$('minCoreCoverage').value=55;$('requirePositiveOCF').checked=false;$('requireExactCash').checked=false;$('requireProfitGrowth').checked=false;$('requireAboveMA60').checked=false;rescore();};
 $('addBtn').onclick=()=>openEdit(null);
 document.querySelectorAll('th[data-sort]').forEach(th=>th.onclick=()=>{const k=th.dataset.sort; if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==='name'||k==='industry')?1:-1;} currentPage=1;render();});
 $('pageSize').addEventListener('change',e=>{pageSize=Number(e.target.value)||100;currentPage=1;render();});
@@ -566,8 +749,8 @@ $('nextPage').onclick=()=>{currentPage+=1;render();}; $('lastPage').onclick=()=>
 $('goPage').onclick=()=>{currentPage=Math.max(1,Number($('pageJump').value)||1);render();}; $('pageJump').addEventListener('keydown',e=>{if(e.key==='Enter')$('goPage').click();});
 window.openDetail=openDetail;window.openEdit=openEdit;
 
-buildEditor();updateWeightText();restoreAutoOptions();rescore();
-setTimeout(()=>{const last=Number(localStorage.getItem('smartStocksLastSync')||0),stale=Date.now()-last>6*60*60*1000,autoCount=stocks.filter(x=>x.autoData).length,partial=autoCount>0&&autoCount<500;if($('autoSyncOnOpen').checked&&navigator.onLine&&(stale||partial))loadHostedStocks(false);},500);
+buildEditor();updateWeightText();updateModeHint($('mode').value);restoreAutoOptions();rescore();
+setTimeout(()=>{const last=Number(localStorage.getItem('smartStocksLastSync')||0),stale=Date.now()-last>6*60*60*1000,autoCount=stocks.filter(x=>x.autoData).length,partial=autoCount>0&&autoCount<500,legacy=!!window.__forceHostedReload;if(navigator.onLine&&(legacy||($('autoSyncOnOpen').checked&&(stale||partial))))loadHostedStocks(false);},500);
 </script>
 </body>
 </html>
