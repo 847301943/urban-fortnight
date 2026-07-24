@@ -37,13 +37,33 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
-      - name: 获取并整理大A数据
+      - name: 获取长期与短线数据
         env:
-          DETAIL_LIMIT: "160"
+          DETAIL_LIMIT: "180"
           DETAIL_WORKERS: "5"
           ANNUAL_YEARS: "4"
           QUARTERS_TO_TRY: "6"
+          FINANCIAL_DETAIL_LIMIT: "260"
+          FINANCIAL_DETAIL_WORKERS: "4"
+          DIVIDEND_DETAIL_LIMIT: "220"
+          DIVIDEND_DETAIL_WORKERS: "4"
+          SHORT_HISTORY_LIMIT: "1200"
+          SHORT_HISTORY_WORKERS: "6"
+          SHORT_HISTORY_CALENDAR_DAYS: "820"
+          SHORT_MIN_AMOUNT: "150000000"
+          SHORT_MIN_PRICE: "2"
+          SHORT_MAX_PRICE: "200"
+          SNAPSHOT_EASTMONEY_TIMEOUT: "75"
+          SNAPSHOT_SINA_TIMEOUT: "150"
+          SNAPSHOT_FALLBACK_MAX_AGE_DAYS: "5"
         run: python scripts/update_data.py
+
+      - name: 回测短线信号并审计缺失数据
+        env:
+          BACKTEST_LIMIT: "500"
+          BACKTEST_HOLDING_DAYS: "1"
+          BACKTEST_FEE_BPS: "20"
+        run: python scripts/backtest_short.py
 
       - name: 准备网页文件
         run: |
