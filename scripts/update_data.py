@@ -18,7 +18,9 @@ import math
 import os
 import pickle
 import random
+import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -53,6 +55,9 @@ SHORT_MIN_AMOUNT = float(os.getenv("SHORT_MIN_AMOUNT", "150000000"))
 SHORT_MIN_PRICE = float(os.getenv("SHORT_MIN_PRICE", "2"))
 SHORT_MAX_PRICE = float(os.getenv("SHORT_MAX_PRICE", "200"))
 SHORT_CACHE = ROOT / "data" / ".short_history_cache.pkl"
+SNAPSHOT_EASTMONEY_TIMEOUT = int(os.getenv("SNAPSHOT_EASTMONEY_TIMEOUT", "75"))
+SNAPSHOT_SINA_TIMEOUT = int(os.getenv("SNAPSHOT_SINA_TIMEOUT", "150"))
+SNAPSHOT_FALLBACK_MAX_AGE_DAYS = int(os.getenv("SNAPSHOT_FALLBACK_MAX_AGE_DAYS", "5"))
 
 FINANCIAL_KEYWORDS = ("银行", "保险", "证券", "多元金融", "信托", "期货")
 
@@ -611,27 +616,111 @@ def preliminary_detail_candidates(stocks: list[dict], limit: int) -> list[dict]:
     return [stock for _, stock in eligible[:limit]]
 
 
-def fetch_spot_snapshot() -> tuple[pd.DataFrame, str]:
-    """Fetch the A-share universe without depending on one quote provider.
+def _ak_snapshot_with_hard_timeout(function_name: str, timeout_seconds: int) -> pd.DataFrame:
+    """Run a potentially blocking AKShare snapshot in a killable subprocess.
 
-    GitHub-hosted runners are sometimes rejected by Eastmoney's push2 quote
-    service.  Try it only briefly, then switch to AKShare's Sina snapshot,
-    which also returns all Shanghai, Shenzhen and Beijing A shares in one call.
-    Missing valuation/trend fields are calculated later from financial reports
-    where possible, or left blank rather than fabricated.
+    Some public quote endpoints can stay at 0/N pages indefinitely without
+    raising a Python exception.  A subprocess gives the workflow a real wall
+    clock timeout instead of occupying the GitHub runner for hours.
     """
+    fd, output_name = tempfile.mkstemp(prefix="a_share_snapshot_", suffix=".pkl")
+    os.close(fd)
+    output_path = Path(output_name)
+    child_code = (
+        "import akshare as ak; "
+        f"frame=getattr(ak, {function_name!r})(); "
+        f"frame.to_pickle({str(output_path)!r})"
+    )
     try:
-        frame = call_with_retry(
-            "stock_zh_a_spot_em", ak.stock_zh_a_spot_em, attempts=2, base_wait=3.0
+        log(f"{function_name}: hard timeout {timeout_seconds}s")
+        completed = subprocess.run(
+            [sys.executable, "-c", child_code],
+            text=True,
+            capture_output=True,
+            timeout=max(10, timeout_seconds),
+            check=False,
         )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "unknown subprocess error")[-900:]
+            raise RuntimeError(detail.strip())
+        frame = pd.read_pickle(output_path)
+        if frame is None or frame.empty:
+            raise RuntimeError("empty dataframe")
+        log(f"{function_name}: received {len(frame)} rows")
+        return frame
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(f"{function_name} exceeded {timeout_seconds}s and was terminated") from exc
+    finally:
+        output_path.unlink(missing_ok=True)
+
+
+def _previous_snapshot_frame() -> tuple[pd.DataFrame, str]:
+    """Use the last successful repository snapshot only as a short-lived fallback.
+
+    The exact daily-bar stage still refreshes the selected overnight pool.  The
+    previous snapshot is accepted for at most a few calendar days so stale data
+    cannot silently survive for a long period.
+    """
+    if not OUTPUT.exists():
+        raise RuntimeError("no previous data/stocks.json is available")
+    payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    rows = payload.get("stocks") if isinstance(payload, dict) else None
+    if not isinstance(rows, list) or len(rows) < MIN_STOCKS:
+        raise RuntimeError("previous stocks.json is empty or incomplete")
+    date_text = str(payload.get("tradeDate") or payload.get("updatedAt") or "")[:10]
+    try:
+        age_days = (datetime.now().date() - datetime.strptime(date_text, "%Y-%m-%d").date()).days
+    except Exception as exc:
+        raise RuntimeError(f"previous snapshot date is invalid: {date_text}") from exc
+    if age_days < 0 or age_days > SNAPSHOT_FALLBACK_MAX_AGE_DAYS:
+        raise RuntimeError(
+            f"previous snapshot is {age_days} days old, exceeding limit {SNAPSHOT_FALLBACK_MAX_AGE_DAYS}"
+        )
+    mapped = []
+    for stock in rows:
+        market_cap = numeric(stock.get("marketCap"))
+        mapped.append({
+            "代码": stock.get("code"),
+            "名称": stock.get("name"),
+            "最新价": stock.get("price"),
+            "涨跌幅": stock.get("pctChange"),
+            "成交量": stock.get("volume"),
+            "成交额": stock.get("amount"),
+            "量比": stock.get("volumeRatio"),
+            "换手率": stock.get("turnover"),
+            "总市值": None if market_cap is None else market_cap * 1e8,
+            "市盈率-动态": stock.get("pe"),
+            "市净率": stock.get("pb"),
+            "60日涨跌幅": stock.get("raw60Return"),
+            "年初至今涨跌幅": stock.get("ytdReturn"),
+        })
+    frame = pd.DataFrame(mapped)
+    log(f"using previous repository snapshot: {len(frame)} rows, trade date {date_text}")
+    return frame, f"上次成功行情快照（{date_text}；实时源本次不可用）"
+
+
+def fetch_spot_snapshot() -> tuple[pd.DataFrame, str]:
+    """Fetch the A-share universe with hard timeouts and a bounded fallback."""
+    errors: list[str] = []
+    try:
+        frame = _ak_snapshot_with_hard_timeout("stock_zh_a_spot_em", SNAPSHOT_EASTMONEY_TIMEOUT)
         return frame, "东方财富实时行情"
     except Exception as exc:
-        log(f"Eastmoney quote snapshot unavailable, switching to Sina: {exc}")
+        errors.append(f"Eastmoney: {exc}")
+        log(f"Eastmoney quote snapshot unavailable: {exc}")
 
-    frame = call_with_retry(
-        "stock_zh_a_spot (Sina fallback)", ak.stock_zh_a_spot, attempts=4, base_wait=5.0
-    )
-    return frame, "新浪实时行情（东财不可用时自动切换）"
+    try:
+        frame = _ak_snapshot_with_hard_timeout("stock_zh_a_spot", SNAPSHOT_SINA_TIMEOUT)
+        return frame, "新浪实时行情（东财不可用时自动切换）"
+    except Exception as exc:
+        errors.append(f"Sina: {exc}")
+        log(f"Sina quote snapshot unavailable: {exc}")
+
+    try:
+        return _previous_snapshot_frame()
+    except Exception as exc:
+        errors.append(f"previous snapshot: {exc}")
+        raise RuntimeError("all quote snapshot paths failed: " + " | ".join(errors)) from exc
 
 
 def numeric_series(frame: pd.DataFrame, column: str) -> pd.Series:
